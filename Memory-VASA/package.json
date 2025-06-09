@@ -1,0 +1,35 @@
+{
+  "name": "react-javascript",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "React TypeScript on Replit, using Vite bundler",
+  "scripts": {
+    "dev": "vite",
+    "server": "node server/index.js",
+    "start": "concurrently \"npm run server\" \"npm run dev\"",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@types/react": "^18.2.37",
+    "@types/react-dom": "^18.2.15",
+    "@vitejs/plugin-react": "^4.2.0",
+    "concurrently": "^9.1.2",
+    "cors": "^2.8.5",
+    "express": "^4.21.2",
+    "nodemon": "^3.1.10",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "typescript": "^5.2.2",
+    "vite": "^5.0.0"
+  },
+  "dependencies": {
+    "@elevenlabs/react": "^0.1.5",
+    "dotenv": "^16.5.0",
+    "firebase": "^11.8.1",
+    "firebase-admin": "^13.4.0"
+  }
+}
