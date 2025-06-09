@@ -2,6 +2,10 @@ class WebhookHandler {
   constructor(memoryManager) {
     this.memoryManager = memoryManager;
     this.webhookEndpoint = '/api/elevenlabs-webhook';
+    
+    // Use environment variable for API URL, same as MemoryManager
+    const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+    this.apiUrl = `${baseUrl}/api/memory`;
   }
 
   // Process incoming ElevenLabs webhook
@@ -265,7 +269,7 @@ class WebhookHandler {
   // Store session-specific stage progression
   async storeSessionStageProgression(userUUID, sessionId, stageData) {
     try {
-      const response = await fetch(`/api/memory/session/${sessionId}/stage`, {
+      const response = await fetch(`${this.apiUrl}/session/${sessionId}/stage`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -292,7 +296,7 @@ class WebhookHandler {
   // Store breakthrough moment
   async storeBreakthroughMoment(userUUID, sessionId, breakthroughData) {
     try {
-      const response = await fetch(`/api/memory/session/${sessionId}/breakthrough`, {
+      const response = await fetch(`${this.apiUrl}/session/${sessionId}/breakthrough`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -319,7 +323,7 @@ class WebhookHandler {
   // Store therapeutic theme
   async storeTherapeuticTheme(userUUID, sessionId, themeData) {
     try {
-      const response = await fetch(`/api/memory/session/${sessionId}/theme`, {
+      const response = await fetch(`${this.apiUrl}/session/${sessionId}/theme`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
