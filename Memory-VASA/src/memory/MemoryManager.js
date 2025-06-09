@@ -9,8 +9,9 @@ class MemoryManager {
     }
 
     this.authService = authService;
-    // Use relative path - Vite proxy will handle routing to backend
-    this.apiUrl = '/api/memory';
+    // Use environment variable for API URL, fallback to local development
+    const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+    this.apiUrl = `${baseUrl}/api/memory`;
     
     // Initialize local cache
     this.localCache = new Map();
@@ -39,7 +40,8 @@ class MemoryManager {
 
   async checkHealth() {
     try {
-      const response = await fetch(`${this.apiUrl.replace('/memory', '/health')}`);
+      const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+      const response = await fetch(`${baseUrl}/api/health`);
       if (response.ok) {
         console.log('✅ Backend health check passed');
       } else {
