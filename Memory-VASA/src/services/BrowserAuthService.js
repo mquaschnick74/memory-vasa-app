@@ -7,7 +7,7 @@ import {
   onAuthStateChanged,
   reload
 } from 'firebase/auth';
-import { auth } from '../../lib/firebase.js';
+import { auth } from '../firebase-config.js';
 
 class BrowserAuthService {
   constructor() {
