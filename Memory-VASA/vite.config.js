@@ -1,21 +1,44 @@
-import { defineConfig } from 'vite';
-import react from '@vitejs/plugin-react';
+// vite.config.js
+import { defineConfig } from 'vite'
+import react from '@vitejs/plugin-react'
 
-// https://vitejs.dev/config/
 export default defineConfig({
   plugins: [react()],
-  server: {
-    host: '0.0.0.0',
-    allowedHosts: [
-      '.replit.dev',  // Allows all Replit dev hosts
-      '03039db7-6b88-418e-a4ef-94a6f86c625f-00-1urmx6gyz0mtn.worf.replit.dev'
-    ],
-    proxy: {
-      '/api': {
-        target: 'http://localhost:5000',
-        changeOrigin: true,
-        secure: false
+  build: {
+    rollupOptions: {
+      external: (id) => {
+        // Exclude all server-side modules
+        if (id.includes('/server/') || id.includes('\\server\\')) {
+          return true;
+        }
+        // Exclude Node.js built-in modules
+        const nodeModules = [
+          'express', 'cors', 'dotenv', 'path', 'fs', 'http', 'https', 
+          'net', 'events', 'util', 'stream', 'buffer', 'querystring', 
+          'url', 'crypto', 'os', 'child_process', 'cluster', 'dgram',
+          'dns', 'domain', 'readline', 'repl', 'tls', 'tty', 'vm',
+          'worker_threads', 'zlib'
+        ];
+        return nodeModules.includes(id);
       }
+    },
+    target: 'es2015',
+    sourcemap: false
+  },
+  resolve: {
+    alias: {
+      // Prevent importing server directories
+      '@/server': false,
+      './server': false,
+      '../server': false,
+      '../../server': false
     }
+  },
+  define: {
+    global: 'globalThis',
+    'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV || 'production')
+  },
+  optimizeDeps: {
+    exclude: ['firebase-admin'] // Exclude server-side Firebase
   }
 })
