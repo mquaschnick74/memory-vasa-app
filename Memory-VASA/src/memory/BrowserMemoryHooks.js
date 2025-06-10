@@ -1,13 +1,26 @@
 import { useState, useEffect, useCallback } from 'react';
+import { 
+  getFirestore, 
+  collection, 
+  doc, 
+  setDoc, 
+  getDoc, 
+  getDocs, 
+  query, 
+  where, 
+  orderBy, 
+  limit,
+  serverTimestamp 
+} from 'firebase/firestore';
+import app from '../firebase-config.js';
 
-// Browser-only memory management using direct API calls
+// Browser-only memory management using Firebase Firestore
 class BrowserMemoryManager {
   constructor() {
-    const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
-    this.apiUrl = `${baseUrl}/api/memory`;
+    this.db = getFirestore(app);
     this.localCache = new Map();
     this.maxCacheSize = 100;
-    console.log('BrowserMemoryManager initialized with API URL:', this.apiUrl);
+    console.log('BrowserMemoryManager initialized with Firebase Firestore');
   }
 
   async storeConversation(userUUID, conversationData) {
@@ -15,44 +28,48 @@ class BrowserMemoryManager {
       const memoryEntry = {
         userUUID,
         timestamp: new Date().toISOString(),
+        createdAt: serverTimestamp(),
         ...conversationData
       };
 
+      // Create a new document with auto-generated ID
+      const conversationRef = doc(collection(this.db, 'conversations'));
+      await setDoc(conversationRef, memoryEntry);
+
       this.addToLocalCache(userUUID, memoryEntry);
-
-      const response = await fetch(`${this.apiUrl}/conversation`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(memoryEntry)
-      });
-
-      if (!response.ok) {
-        throw new Error(`Memory storage failed: ${response.statusText}`);
-      }
-
-      return await response.json();
+      console.log('✅ Conversation stored in Firebase:', conversationRef.id);
+      return { success: true, id: conversationRef.id };
     } catch (error) {
       console.error('Failed to store conversation memory:', error);
       this.fallbackToLocalStorage(userUUID, conversationData);
+      return { success: false, error: error.message };
     }
   }
 
-  async getConversationHistory(userUUID, limit = 50) {
+  async getConversationHistory(userUUID, limitCount = 50) {
     try {
       const cached = this.getFromLocalCache(userUUID);
       if (cached && cached.length > 0) {
-        return cached.slice(-limit);
+        return cached.slice(-limitCount);
       }
 
-      const response = await fetch(`${this.apiUrl}/conversation/${userUUID}?limit=${limit}`);
+      const q = query(
+        collection(this.db, 'conversations'),
+        where('userUUID', '==', userUUID),
+        orderBy('timestamp', 'desc'),
+        limit(limitCount)
+      );
+      
+      const querySnapshot = await getDocs(q);
+      const history = [];
+      querySnapshot.forEach((doc) => {
+        history.push({ id: doc.id, ...doc.data() });
+      });
 
-      if (!response.ok) {
-        throw new Error(`Memory retrieval failed: ${response.statusText}`);
-      }
-
-      const history = await response.json();
-      this.localCache.set(userUUID, history);
-      return history;
+      const sortedHistory = history.reverse(); // Return in chronological order
+      this.localCache.set(userUUID, sortedHistory);
+      console.log(`✅ Retrieved ${history.length} conversations from Firebase`);
+      return sortedHistory;
     } catch (error) {
       console.error('Failed to retrieve conversation history:', error);
       return this.fallbackGetFromLocalStorage(userUUID) || [];
@@ -64,40 +81,36 @@ class BrowserMemoryManager {
       const stageEntry = {
         userUUID,
         timestamp: new Date().toISOString(),
+        createdAt: serverTimestamp(),
         type: 'stage_progression',
         ...stageData
       };
 
-      const response = await fetch(`${this.apiUrl}/stage`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(stageEntry)
-      });
+      const stageRef = doc(collection(this.db, 'stage_progressions'));
+      await setDoc(stageRef, stageEntry);
 
-      if (!response.ok) {
-        throw new Error(`Stage storage failed: ${response.statusText}`);
-      }
-
-      return await response.json();
+      console.log('✅ Stage progression stored in Firebase:', stageRef.id);
+      return { success: true, id: stageRef.id };
     } catch (error) {
       console.error('Failed to store stage progression:', error);
       this.fallbackToLocalStorage(`${userUUID}_stages`, stageData);
+      return { success: false, error: error.message };
     }
   }
 
   async getUserProfile(userUUID) {
     try {
-      const response = await fetch(`${this.apiUrl}/profile/${userUUID}`);
+      const profileRef = doc(this.db, 'user_profiles', userUUID);
+      const profileSnap = await getDoc(profileRef);
 
-      if (response.status === 404) {
+      if (profileSnap.exists()) {
+        const profileData = profileSnap.data();
+        console.log('✅ Profile retrieved from Firebase:', profileData);
+        return profileData;
+      } else {
+        console.log('No profile found in Firebase for user:', userUUID);
         return null;
       }
-
-      if (!response.ok) {
-        throw new Error(`Profile retrieval failed: ${response.status}`);
-      }
-
-      return await response.json();
     } catch (error) {
       console.error('Failed to retrieve user profile:', error.message);
       return this.fallbackGetFromLocalStorage(`${userUUID}_profile`) || null;
@@ -106,62 +119,26 @@ class BrowserMemoryManager {
 
   async storeUserProfile(userUUID, profileData) {
     try {
-      const response = await fetch(`${this.apiUrl}/profile`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userUUID, ...profileData })
-      });
+      const profileRef = doc(this.db, 'user_profiles', userUUID);
+      const profileEntry = {
+        userUUID,
+        lastUpdated: serverTimestamp(),
+        updatedAt: new Date().toISOString(),
+        ...profileData
+      };
 
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const result = await response.json();
-      console.log('✅ Profile stored:', result);
-      return result;
+      await setDoc(profileRef, profileEntry, { merge: true });
+      console.log('✅ Profile stored in Firebase:', profileEntry);
+      return { success: true, data: profileEntry };
     } catch (error) {
-      console.error('❌ Failed to store profile:', error);
+      console.error('❌ Failed to store profile in Firebase:', error);
       throw error;
     }
   }
 
-  addToLocalCache(key, data) {
-    if (this.localCache.size >= this.maxCacheSize) {
-      const firstKey = this.localCache.keys().next().value;
-      this.localCache.delete(firstKey);
-    }
-
-    const existing = this.localCache.get(key) || [];
-    existing.push(data);
-    this.localCache.set(key, existing);
-  }
-
-  getFromLocalCache(key) {
-    return this.localCache.get(key) || [];
-  }
-
-  fallbackToLocalStorage(key, data) {
+  async getConversationContext(userUUID, limitCount = 10) {
     try {
-      const existing = JSON.parse(localStorage.getItem(key) || '[]');
-      existing.push(data);
-      localStorage.setItem(key, JSON.stringify(existing));
-    } catch (error) {
-      console.error('LocalStorage fallback failed:', error);
-    }
-  }
-
-  fallbackGetFromLocalStorage(key) {
-    try {
-      return JSON.parse(localStorage.getItem(key) || '[]');
-    } catch (error) {
-      console.error('LocalStorage retrieval failed:', error);
-      return [];
-    }
-  }
-
-  async getConversationContext(userUUID, limit = 10) {
-    try {
-      const history = await this.getConversationHistory(userUUID, limit);
+      const history = await this.getConversationHistory(userUUID, limitCount);
 
       if (!history || history.length === 0) {
         return null;
@@ -200,6 +177,41 @@ class BrowserMemoryManager {
 
     return summary;
   }
+
+  // Keep existing local cache and fallback methods
+  addToLocalCache(key, data) {
+    if (this.localCache.size >= this.maxCacheSize) {
+      const firstKey = this.localCache.keys().next().value;
+      this.localCache.delete(firstKey);
+    }
+
+    const existing = this.localCache.get(key) || [];
+    existing.push(data);
+    this.localCache.set(key, existing);
+  }
+
+  getFromLocalCache(key) {
+    return this.localCache.get(key) || [];
+  }
+
+  fallbackToLocalStorage(key, data) {
+    try {
+      const existing = JSON.parse(localStorage.getItem(key) || '[]');
+      existing.push(data);
+      localStorage.setItem(key, JSON.stringify(existing));
+    } catch (error) {
+      console.error('LocalStorage fallback failed:', error);
+    }
+  }
+
+  fallbackGetFromLocalStorage(key) {
+    try {
+      return JSON.parse(localStorage.getItem(key) || '[]');
+    } catch (error) {
+      console.error('LocalStorage retrieval failed:', error);
+      return [];
+    }
+  }
 }
 
 const browserMemoryManager = new BrowserMemoryManager();
@@ -233,7 +245,7 @@ export const useConversationMemory = (userUUID) => {
 
     try {
       const stored = await browserMemoryManager.storeConversation(userUUID, conversationData);
-      if (stored) {
+      if (stored && stored.success) {
         setConversationHistory(prev => [...prev, {
           userUUID,
           timestamp: new Date().toISOString(),
