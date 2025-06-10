@@ -1,6 +1,7 @@
 // frontend firebase configuration
 import { initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
+import { getFirestore } from 'firebase/firestore'; // Add this
 
 // 🔍 DEBUG: Check Vite environment variables
 console.log('🔍 Environment:', typeof window !== 'undefined' ? 'Browser' : 'Server');
@@ -28,5 +29,8 @@ console.log('🔍 Final config object:', firebaseConfig);
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
+
+// Initialize services
 export const auth = getAuth(app);
+export const db = getFirestore(app); // Add this export
 export default app;
