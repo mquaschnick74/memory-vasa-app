@@ -1,11 +1,19 @@
+import { 
+  getFirestore, 
+  collection, 
+  doc, 
+  setDoc, 
+  serverTimestamp 
+} from 'firebase/firestore';
+import app from '../firebase-config.js';
+
 class WebhookHandler {
   constructor(memoryManager) {
     this.memoryManager = memoryManager;
     this.webhookEndpoint = '/api/elevenlabs-webhook';
+    this.db = getFirestore(app);
     
-    // Use environment variable for API URL, same as MemoryManager
-    const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
-    this.apiUrl = `${baseUrl}/api/memory`;
+    console.log('WebhookHandler initialized with Firebase Firestore');
   }
 
   // Process incoming ElevenLabs webhook
@@ -87,7 +95,7 @@ class WebhookHandler {
     if (detectedStage) {
       conversationEntry.css_stage = detectedStage;
 
-      // Store stage progression in session-specific location
+      // Store stage progression in Firebase
       await this.storeSessionStageProgression(userUUID, sessionId, {
         stage: detectedStage,
         trigger: 'agent_response',
@@ -161,6 +169,109 @@ class WebhookHandler {
     await this.memoryManager.storeConversation(userUUID, conversationEntry);
   }
 
+  // Store stage progression in Firebase
+  async storeStageProgression(userUUID, stageData) {
+    try {
+      const stageRef = doc(collection(this.db, 'stage_progressions'));
+      const stageEntry = {
+        userUUID,
+        timestamp: new Date().toISOString(),
+        createdAt: serverTimestamp(),
+        ...stageData
+      };
+
+      await setDoc(stageRef, stageEntry);
+      console.log('✅ Stage progression stored in Firebase via webhook:', stageRef.id);
+      return { success: true, id: stageRef.id };
+    } catch (error) {
+      console.error('❌ Failed to store stage progression via webhook:', error);
+      throw error;
+    }
+  }
+
+  // Store user context in Firebase
+  async storeUserContext(userUUID, contextData) {
+    try {
+      const contextRef = doc(collection(this.db, 'user_contexts'));
+      const contextEntry = {
+        userUUID,
+        timestamp: new Date().toISOString(),
+        createdAt: serverTimestamp(),
+        ...contextData
+      };
+
+      await setDoc(contextRef, contextEntry);
+      console.log('✅ User context stored in Firebase via webhook:', contextRef.id);
+      return { success: true, id: contextRef.id };
+    } catch (error) {
+      console.error('❌ Failed to store user context via webhook:', error);
+      throw error;
+    }
+  }
+
+  // Store session-specific stage progression in Firebase
+  async storeSessionStageProgression(userUUID, sessionId, stageData) {
+    try {
+      const sessionStageRef = doc(collection(this.db, 'session_stage_progressions'));
+      const stageEntry = {
+        userUUID,
+        sessionId,
+        timestamp: new Date().toISOString(),
+        createdAt: serverTimestamp(),
+        ...stageData
+      };
+
+      await setDoc(sessionStageRef, stageEntry);
+      console.log('✅ Session stage progression stored in Firebase via webhook:', sessionStageRef.id);
+      return { success: true, id: sessionStageRef.id };
+    } catch (error) {
+      console.error('❌ Failed to store session stage progression via webhook:', error);
+      throw error;
+    }
+  }
+
+  // Store breakthrough moment in Firebase
+  async storeBreakthroughMoment(userUUID, sessionId, breakthroughData) {
+    try {
+      const breakthroughRef = doc(collection(this.db, 'breakthrough_moments'));
+      const breakthroughEntry = {
+        userUUID,
+        sessionId,
+        timestamp: new Date().toISOString(),
+        createdAt: serverTimestamp(),
+        ...breakthroughData
+      };
+
+      await setDoc(breakthroughRef, breakthroughEntry);
+      console.log('✅ Breakthrough moment stored in Firebase via webhook:', breakthroughRef.id);
+      return { success: true, id: breakthroughRef.id };
+    } catch (error) {
+      console.error('❌ Failed to store breakthrough moment via webhook:', error);
+      throw error;
+    }
+  }
+
+  // Store therapeutic theme in Firebase
+  async storeTherapeuticTheme(userUUID, sessionId, themeData) {
+    try {
+      const themeRef = doc(collection(this.db, 'therapeutic_themes'));
+      const themeEntry = {
+        userUUID,
+        sessionId,
+        timestamp: new Date().toISOString(),
+        createdAt: serverTimestamp(),
+        ...themeData
+      };
+
+      await setDoc(themeRef, themeEntry);
+      console.log('✅ Therapeutic theme stored in Firebase via webhook:', themeRef.id);
+      return { success: true, id: themeRef.id };
+    } catch (error) {
+      console.error('❌ Failed to store therapeutic theme via webhook:', error);
+      throw error;
+    }
+  }
+
   // Detect CSS stage from agent response
   detectStageFromResponse(response) {
     if (!response || typeof response !== 'string') return null;
@@ -209,141 +320,6 @@ class WebhookHandler {
         detail: webhookData
       });
       window.dispatchEvent(event);
-    }
-  }
-
-  // Store stage progression (updated to use subcollection endpoint)
-  async storeStageProgression(userUUID, stageData) {
-    try {
-      const response = await fetch(`${this.apiUrl}/stage`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          userUUID,
-          ...stageData
-        })
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const result = await response.json();
-      console.log('✅ Stage progression stored in subcollection via webhook:', result);
-      return result;
-    } catch (error) {
-      console.error('❌ Failed to store stage progression via webhook:', error);
-      throw error;
-    }
-  }
-
-  // Store user context (new method for subcollection)
-  async storeUserContext(userUUID, contextData) {
-    try {
-      const response = await fetch(`${this.apiUrl}/context`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          userUUID,
-          ...contextData
-        })
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const result = await response.json();
-      console.log('✅ User context stored in subcollection via webhook:', result);
-      return result;
-    } catch (error) {
-      console.error('❌ Failed to store user context via webhook:', error);
-      throw error;
-    }
-  }
-
-  // Store session-specific stage progression
-  async storeSessionStageProgression(userUUID, sessionId, stageData) {
-    try {
-      const response = await fetch(`${this.apiUrl}/session/${sessionId}/stage`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          userUUID,
-          ...stageData
-        })
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const result = await response.json();
-      console.log('✅ Session stage progression stored via webhook:', result);
-      return result;
-    } catch (error) {
-      console.error('❌ Failed to store session stage progression via webhook:', error);
-      throw error;
-    }
-  }
-
-  // Store breakthrough moment
-  async storeBreakthroughMoment(userUUID, sessionId, breakthroughData) {
-    try {
-      const response = await fetch(`${this.apiUrl}/session/${sessionId}/breakthrough`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          userUUID,
-          ...breakthroughData
-        })
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const result = await response.json();
-      console.log('✅ Breakthrough moment stored via webhook:', result);
-      return result;
-    } catch (error) {
-      console.error('❌ Failed to store breakthrough moment via webhook:', error);
-      throw error;
-    }
-  }
-
-  // Store therapeutic theme
-  async storeTherapeuticTheme(userUUID, sessionId, themeData) {
-    try {
-      const response = await fetch(`${this.apiUrl}/session/${sessionId}/theme`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          userUUID,
-          ...themeData
-        })
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const result = await response.json();
-      console.log('✅ Therapeutic theme stored via webhook:', result);
-      return result;
-    } catch (error) {
-      console.error('❌ Failed to store therapeutic theme via webhook:', error);
-      throw error;
     }
   }
 
