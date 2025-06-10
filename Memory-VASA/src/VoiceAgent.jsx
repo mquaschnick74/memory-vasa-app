@@ -3,18 +3,36 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useConversation } from '@elevenlabs/react';
 import AudioVisualizer from './AudioVisualizer';
 
-// TEST 1: Add back MemoryHooks only
-import { useConversationMemory, useStageMemory, useUserProfile, useConversationContext } from './memory/MemoryHooks.js';
-import { memoryManager, getMemoryManager } from './memory/MemoryHooks.js';
+// Step 1.1: Test MemoryHooks imports individually
+import React, { useState, useEffect, useRef } from 'react';
+import { useConversation } from '@elevenlabs/react';
+import AudioVisualizer from './AudioVisualizer';
 
-// STILL COMMENTED OUT:
-// import WebhookHandler from './memory/WebhookHandler.js';
-// import MemoryDashboard from './memory/MemoryDashboard.jsx';
+// TEST: Import ONLY the hook functions, NOT MemoryManager
+import { useConversationMemory, useStageMemory, useUserProfile, useConversationContext } from './memory/MemoryHooks.js';
+
+// DO NOT IMPORT THESE YET:
+// import { memoryManager, getMemoryManager } from './memory/MemoryHooks.js';
 // import MemoryManager from './memory/MemoryManager.js';
 
 // Main VASA Component
 const VASAInterface = () => {
-  // TEST 1: Add back memory hooks usage
+  const [userUUID, setUserUUID] = useState(null);
+  const [symbolicName, setSymbolicName] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [currentStage, setCurrentStage] = useState('⊙');
+  const [micPermission, setMicPermission] = useState(false);
+  const [isRegistered, setIsRegistered] = useState(false);
+  const [authStep, setAuthStep] = useState('login');
+  const [authService, setAuthService] = useState(null);
+  const [isEmailVerified, setIsEmailVerified] = useState(false);
+  const [agentId] = useState('nJeN1YQZyK0aTu2SoJnM');
+  const [buttonState, setButtonState] = useState('resting');
+  const [termsAccepted, setTermsAccepted] = useState(false);
+  const [showTermsModal, setShowTermsModal] = useState(false);
+
+  // TEST: Try using the hooks (this will test if MemoryManager is the problem)
   const { 
     conversationHistory, 
     addConversation, 
@@ -34,30 +52,6 @@ const VASAInterface = () => {
     context,
     getContext
   } = useConversationContext(userUUID);
-  const [userUUID, setUserUUID] = useState(null);
-  const [symbolicName, setSymbolicName] = useState('');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [currentStage, setCurrentStage] = useState('⊙');
-  const [micPermission, setMicPermission] = useState(false);
-  const [isRegistered, setIsRegistered] = useState(false);
-  const [authStep, setAuthStep] = useState('login');
-  const [authService, setAuthService] = useState(null);
-  const [isEmailVerified, setIsEmailVerified] = useState(false);
-  const [agentId] = useState('nJeN1YQZyK0aTu2SoJnM');
-  const [buttonState, setButtonState] = useState('resting');
-  const [termsAccepted, setTermsAccepted] = useState(false);
-  const [showTermsModal, setShowTermsModal] = useState(false);
-
-  // TEST 1: Test getMemoryManager function
-  useEffect(() => {
-    try {
-      const manager = getMemoryManager();
-      console.log('✅ Memory manager accessible:', !!manager);
-    } catch (error) {
-      console.error('❌ Memory manager error:', error);
-    }
-  }, []);
 
   // SIMPLIFIED AUTH INIT
   useEffect(() => {
@@ -121,8 +115,8 @@ const VASAInterface = () => {
       height: '100vh',
       fontFamily: 'system-ui, -apple-system, sans-serif'
     }}>
-      <h1>VASA Debug Test - Step 1</h1>
-      <p>Testing: MemoryHooks imports</p>
+      <h1>VASA Debug Test - Step 1.1</h1>
+      <p>Testing: Individual MemoryHooks (NOT MemoryManager)</p>
       <p>Memory Loading: {memoryLoading ? 'Yes' : 'No'}</p>
       <p>Conversation History: {conversationHistory?.length || 0} items</p>
       
