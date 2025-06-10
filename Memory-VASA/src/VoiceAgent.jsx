@@ -3,16 +3,37 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useConversation } from '@elevenlabs/react';
 import AudioVisualizer from './AudioVisualizer';
 
-// COMMENT OUT THESE IMPORTS ONE BY ONE TO FIND THE PROBLEM:
-// import { useConversationMemory, useStageMemory, useUserProfile, useConversationContext } from './memory/MemoryHooks.js';
+// TEST 1: Add back MemoryHooks only
+import { useConversationMemory, useStageMemory, useUserProfile, useConversationContext } from './memory/MemoryHooks.js';
+import { memoryManager, getMemoryManager } from './memory/MemoryHooks.js';
+
+// STILL COMMENTED OUT:
 // import WebhookHandler from './memory/WebhookHandler.js';
 // import MemoryDashboard from './memory/MemoryDashboard.jsx';
-// import { memoryManager, getMemoryManager } from './memory/MemoryHooks.js';
 // import MemoryManager from './memory/MemoryManager.js';
 
 // Main VASA Component
 const VASAInterface = () => {
-  // SIMPLIFIED STATE - remove memory-related state for now
+  // TEST 1: Add back memory hooks usage
+  const { 
+    conversationHistory, 
+    addConversation, 
+    isLoading: memoryLoading 
+  } = useConversationMemory(userUUID);
+
+  const { 
+    recordStageTransition 
+  } = useStageMemory(userUUID);
+
+  const { 
+    profile, 
+    updateProfile 
+  } = useUserProfile(userUUID);
+
+  const {
+    context,
+    getContext
+  } = useConversationContext(userUUID);
   const [userUUID, setUserUUID] = useState(null);
   const [symbolicName, setSymbolicName] = useState('');
   const [email, setEmail] = useState('');
@@ -27,6 +48,16 @@ const VASAInterface = () => {
   const [buttonState, setButtonState] = useState('resting');
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [showTermsModal, setShowTermsModal] = useState(false);
+
+  // TEST 1: Test getMemoryManager function
+  useEffect(() => {
+    try {
+      const manager = getMemoryManager();
+      console.log('✅ Memory manager accessible:', !!manager);
+    } catch (error) {
+      console.error('❌ Memory manager error:', error);
+    }
+  }, []);
 
   // SIMPLIFIED AUTH INIT
   useEffect(() => {
@@ -90,8 +121,10 @@ const VASAInterface = () => {
       height: '100vh',
       fontFamily: 'system-ui, -apple-system, sans-serif'
     }}>
-      <h1>VASA Debug Test</h1>
-      <p>If you see this, the basic app works!</p>
+      <h1>VASA Debug Test - Step 1</h1>
+      <p>Testing: MemoryHooks imports</p>
+      <p>Memory Loading: {memoryLoading ? 'Yes' : 'No'}</p>
+      <p>Conversation History: {conversationHistory?.length || 0} items</p>
       
       <button
         onClick={handleMainButtonClick}
