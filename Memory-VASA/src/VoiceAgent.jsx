@@ -2,12 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useConversation } from '@elevenlabs/react';
 import AudioVisualizer from './AudioVisualizer';
 
-// TEST: Import ONLY the hook functions, NOT MemoryManager
-import { useConversationMemory, useStageMemory, useUserProfile, useConversationContext } from './memory/MemoryHooks.js';
-
-// DO NOT IMPORT THESE YET:
-// import { memoryManager, getMemoryManager } from './memory/MemoryHooks.js';
-// import MemoryManager from './memory/MemoryManager.js';
+// BROWSER-ONLY MEMORY HOOKS (no server dependencies)
+import { useConversationMemory, useStageMemory, useUserProfile, useConversationContext, getBrowserMemoryManager } from './memory/BrowserMemoryHooks.js';
 
 // Main VASA Component
 const VASAInterface = () => {
@@ -55,8 +51,12 @@ const VASAInterface = () => {
         const auth = new BrowserAuthService();
         setAuthService(auth);
         console.log('✅ Auth service initialized');
+        
+        // Test browser memory manager
+        const manager = getBrowserMemoryManager();
+        console.log('✅ Browser memory manager accessible:', !!manager);
       } catch (error) {
-        console.error('❌ Failed to initialize AuthService:', error);
+        console.error('❌ Failed to initialize services:', error);
       }
     };
 
@@ -109,8 +109,8 @@ const VASAInterface = () => {
       height: '100vh',
       fontFamily: 'system-ui, -apple-system, sans-serif'
     }}>
-      <h1>VASA Debug Test - Step 1.1</h1>
-      <p>Testing: Individual MemoryHooks (NOT MemoryManager)</p>
+      <h1>VASA Debug Test - Step 1.2</h1>
+      <p>Testing: Browser-Only Memory Hooks (NO server dependencies)</p>
       <p>Memory Loading: {memoryLoading ? 'Yes' : 'No'}</p>
       <p>Conversation History: {conversationHistory?.length || 0} items</p>
       
