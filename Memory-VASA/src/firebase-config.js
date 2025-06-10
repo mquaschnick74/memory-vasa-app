@@ -2,6 +2,10 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 
+// 🐛 DEBUG: Check if we're in browser vs server
+console.log('Environment:', typeof window !== 'undefined' ? 'Browser' : 'Server');
+console.log('All env vars:', Object.keys(process.env).filter(key => key.startsWith('NEXT_PUBLIC')));
+
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
   authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
@@ -11,9 +15,15 @@ const firebaseConfig = {
   appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID
 };
 
-// 🐛 DEBUG: Remove this after testing
-console.log('Firebase Config Debug:', firebaseConfig);
-console.log('API Key exists:', !!process.env.NEXT_PUBLIC_FIREBASE_API_KEY);
+// 🐛 DEBUG: Log each field individually
+console.log('🔧 Firebase Config Debug:');
+console.log('apiKey:', process.env.NEXT_PUBLIC_FIREBASE_API_KEY ? '✅ SET' : '❌ MISSING');
+console.log('authDomain:', process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN ? '✅ SET' : '❌ MISSING');
+console.log('projectId:', process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID ? '✅ SET' : '❌ MISSING');
+console.log('storageBucket:', process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET ? '✅ SET' : '❌ MISSING');
+console.log('messagingSenderId:', process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID ? '✅ SET' : '❌ MISSING');
+console.log('appId:', process.env.NEXT_PUBLIC_FIREBASE_APP_ID ? '✅ SET' : '❌ MISSING');
+console.log('Final config object:', firebaseConfig);
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
