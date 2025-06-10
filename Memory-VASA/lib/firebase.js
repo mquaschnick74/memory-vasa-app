@@ -1,3 +1,7 @@
+// ADD THIS AS THE VERY FIRST LINE
+alert('LIB/FIREBASE.JS IS RUNNING!');
+console.error('🚨 LIB/FIREBASE.JS LOADED - YOU SHOULD SEE THIS!');
+
 // lib/firebase.js
 import { initializeApp } from 'firebase/app';
 import { getFirestore } from 'firebase/firestore';
