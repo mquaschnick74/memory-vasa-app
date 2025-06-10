@@ -3,7 +3,7 @@ import { useState, useEffect, useCallback } from 'react';
 // Browser-only memory management using direct API calls
 class BrowserMemoryManager {
   constructor() {
-    const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+    const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
     this.apiUrl = `${baseUrl}/api/memory`;
     this.localCache = new Map();
     this.maxCacheSize = 100;
