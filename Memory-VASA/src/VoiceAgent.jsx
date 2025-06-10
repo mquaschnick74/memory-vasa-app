@@ -1,9 +1,3 @@
-// Debug version - comment out problematic imports one by one
-import React, { useState, useEffect, useRef } from 'react';
-import { useConversation } from '@elevenlabs/react';
-import AudioVisualizer from './AudioVisualizer';
-
-// Step 1.1: Test MemoryHooks imports individually
 import React, { useState, useEffect, useRef } from 'react';
 import { useConversation } from '@elevenlabs/react';
 import AudioVisualizer from './AudioVisualizer';
