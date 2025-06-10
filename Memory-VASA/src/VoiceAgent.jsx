@@ -58,17 +58,18 @@ const VASAInterface = () => {
   const memoryManagerRef = useRef(getMemoryManager());
   const isInitialized = useRef(false);
 
-  // Initialize AuthService
-  useEffect(() => {
-    const initAuthService = async () => {
-      try {
-        const { default: AuthService } = await import('../server/services/AuthService.js');
-        const auth = new AuthService();
-        setAuthService(auth);
+// Initialize AuthService
+useEffect(() => {
+  const initAuthService = async () => {
+    try {
+      // Import the browser-compatible auth service
+      const { default: BrowserAuthService } = await import('./services/BrowserAuthService.js');
+      const auth = new BrowserAuthService();
+      setAuthService(auth);
 
-        // Listen for auth state changes (prevent duplicate listeners)
-        if (!authService) {
-          auth.onAuthStateChanged(async (user) => {
+      // Listen for auth state changes (prevent duplicate listeners)
+      if (!authService) {
+        auth.onAuthStateChanged(async (user) => {
           if (user) {
             setUserUUID(user.uid);
             setIsEmailVerified(user.emailVerified);
@@ -112,14 +113,14 @@ const VASAInterface = () => {
             setIsRegistered(false);
           }
         });
-        }
-      } catch (error) {
-        console.error('Failed to initialize AuthService:', error);
       }
-    };
+    } catch (error) {
+      console.error('Failed to initialize AuthService:', error);
+    }
+  };
 
-    initAuthService();
-  }, []);
+  initAuthService();
+}, []);
 
   useEffect(() => {
     if (!webhookHandlerRef.current && memoryManagerRef.current && isInitialized.current) {
