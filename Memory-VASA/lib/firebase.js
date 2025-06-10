@@ -1,9 +1,10 @@
 // lib/firebase.js
-alert('LIB/FIREBASE.JS IS RUNNING!'); // Keep this for now
-
 import { initializeApp } from 'firebase/app';
 import { getFirestore } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
+
+// Debug alert to confirm file is running
+alert('LIB/FIREBASE.JS IS RUNNING!');
 
 // 🐛 DEBUG: Check what we're getting
 console.log('🔧 DEBUG - Environment Variables:');
@@ -26,4 +27,24 @@ const firebaseConfig = {
 
 console.log('🔧 Final Config Object:', firebaseConfig);
 
-// ... rest of your existing validation code
+// Validate configuration
+const requiredFields = ['apiKey', 'authDomain', 'projectId', 'storageBucket', 'messagingSenderId', 'appId'];
+const missingFields = requiredFields.filter(field => !firebaseConfig[field]);
+
+if (missingFields.length > 0) {
+  console.error('❌ Missing Firebase configuration fields:', missingFields);
+  console.error('📌 Please check your environment variables');
+  throw new Error(`Missing Firebase configuration: ${missingFields.join(', ')}`);
+}
+
+console.log('✅ Firebase config loaded for project:', firebaseConfig.projectId);
+
+// Initialize Firebase
+const app = initializeApp(firebaseConfig);
+
+// Initialize services
+export const db = getFirestore(app);
+export const auth = getAuth(app);
+
+// Export the app for other uses
+export default app;
