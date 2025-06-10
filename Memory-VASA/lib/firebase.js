@@ -6,6 +6,12 @@ import { getAuth } from 'firebase/auth';
 // Debug alert to confirm file is running
 alert('LIB/FIREBASE.JS IS RUNNING!');
 
+// 🔧 COMPREHENSIVE DEBUG - Add this right after alert
+console.log('🔧 ALL ENV VARS:', Object.keys(process.env));
+console.log('🔧 NEXT_PUBLIC VARS:', Object.keys(process.env).filter(key => key.startsWith('NEXT_PUBLIC')));
+console.log('🔧 Test var:', process.env.NEXT_PUBLIC_TEST);
+console.log('🔧 Raw API key:', process.env.NEXT_PUBLIC_FIREBASE_API_KEY);
+
 // 🐛 DEBUG: Check what we're getting
 console.log('🔧 DEBUG - Environment Variables:');
 console.log('API Key:', process.env.NEXT_PUBLIC_FIREBASE_API_KEY ? 'EXISTS' : 'MISSING');
