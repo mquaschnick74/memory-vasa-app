@@ -1,6 +1,5 @@
 // init-firebase-db.js
 // Run this script once to initialize your Firebase database with proper collections
-
 import { initializeApp } from 'firebase/app';
 import { getFirestore, collection, doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import dotenv from 'dotenv';
@@ -27,18 +26,19 @@ const db = getFirestore(app);
 async function initializeDatabase() {
   try {
     console.log('📦 Creating initial collections...');
-
+    
     // Define collections
     const collections = {
       conversations: 'conversations',
       profiles: 'user_profiles',
       stages: 'stage_progressions',
-      sessions: 'conversation_sessions'
+      sessions: 'conversation_sessions',
+      subscriptions: 'subscriptions'  // ← Added for your subscription app
     };
-
+    
     // Create a test document in each collection to initialize them
     const testUserUUID = 'test-user-001';
-
+    
     // 1. Initialize conversations collection
     console.log('Creating conversations collection...');
     const conversationRef = doc(db, collections.conversations, 'init-doc');
@@ -53,7 +53,7 @@ async function initializeDatabase() {
       }
     });
     console.log('✅ Conversations collection created');
-
+    
     // 2. Initialize user_profiles collection
     console.log('Creating user_profiles collection...');
     const profileRef = doc(db, collections.profiles, testUserUUID);
@@ -67,7 +67,7 @@ async function initializeDatabase() {
       }
     });
     console.log('✅ User profiles collection created');
-
+    
     // 3. Initialize stage_progressions collection
     console.log('Creating stage_progressions collection...');
     const stageRef = doc(db, collections.stages, 'init-doc');
@@ -79,7 +79,7 @@ async function initializeDatabase() {
       createdAt: new Date().toISOString()
     });
     console.log('✅ Stage progressions collection created');
-
+    
     // 4. Initialize conversation_sessions collection
     console.log('Creating conversation_sessions collection...');
     const sessionRef = doc(db, collections.sessions, testUserUUID);
@@ -90,15 +90,37 @@ async function initializeDatabase() {
       createdAt: new Date().toISOString()
     });
     console.log('✅ Conversation sessions collection created');
-
+    
+    // 5. Initialize subscriptions collection (NEW!)
+    console.log('Creating subscriptions collection...');
+    const subscriptionRef = doc(db, collections.subscriptions, 'init-doc');
+    await setDoc(subscriptionRef, {
+      userUUID: testUserUUID,
+      plan: 'test_plan',
+      status: 'active',
+      stripeCustomerId: 'test_stripe_customer',
+      priceId: 'test_price_id',
+      startDate: new Date().toISOString(),
+      endDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(), // 30 days from now
+      createdAt: new Date().toISOString(),
+      updatedAt: serverTimestamp(),
+      metadata: {
+        source: 'initialization',
+        trial: false
+      }
+    });
+    console.log('✅ Subscriptions collection created');
+    
     console.log('\n🎉 Database initialization complete!');
     console.log('📊 Collections created:');
     console.log('  - conversations');
     console.log('  - user_profiles');
     console.log('  - stage_progressions');
     console.log('  - conversation_sessions');
+    console.log('  - subscriptions');  // ← Added to the list
     console.log('\n🧹 You can now delete the test documents from Firebase console if desired.');
-
+    console.log('💡 Both your VASA memory app and subscription app can now use this database!');
+    
   } catch (error) {
     console.error('❌ Error initializing database:', error);
     console.error('Details:', error.message);
