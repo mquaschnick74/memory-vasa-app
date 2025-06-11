@@ -54,9 +54,23 @@ class BrowserMemoryHooks {
     return { success: true, id: 'context_initial' };
   }
 
-  // FIXED: storeConversation method
+  // FIXED: storeConversation method (with user check)
   async storeConversation(userUUID, conversationData) {
     try {
+      // First check if user exists
+      const userCheck = await this.checkUserProfile(userUUID);
+      if (!userCheck.exists) {
+        console.warn(`⚠️ Cannot store conversation - no user profile: ${userUUID}`);
+        // Fallback to localStorage only
+        this.fallbackToLocalStorage(userUUID, conversationData);
+        return { 
+          success: false, 
+          error: 'User profile not found',
+          requires_profile_creation: true,
+          stored_locally: true
+        };
+      }
+
       // Get current stage if not provided
       const currentStage = await this.getCurrentStage(userUUID);
       const stage = conversationData.stage || currentStage?.stage_name || 'pointed_origin';
@@ -146,8 +160,67 @@ class BrowserMemoryHooks {
     return stageFocusMap[stage] || 'general_therapeutic';
   }
 
-  // Create new user with CSS structure
-  async createNewUser(userUUID) {
+  // Get user setup status (for UI to determine what to show)
+  async getUserSetupStatus(userUUID) {
+    try {
+      const userCheck = await this.checkUserProfile(userUUID);
+      
+      return {
+        profile_exists: userCheck.exists,
+        setup_completed: userCheck.exists && userCheck.profile?.profile?.setup_completed,
+        current_stage: userCheck.exists ? userCheck.profile?.current_stage : null,
+        requires_profile_creation: !userCheck.exists,
+        requires_setup_completion: userCheck.exists && !userCheck.profile?.profile?.setup_completed,
+        user_data: userCheck.exists ? userCheck.profile : null
+      };
+    } catch (error) {
+      console.error('❌ Failed to get user setup status:', error);
+      return {
+        profile_exists: false,
+        setup_completed: false,
+        current_stage: null,
+        requires_profile_creation: true,
+        requires_setup_completion: false,
+        user_data: null,
+        error: error.message
+      };
+    }
+  }
+
+  // Check if user profile exists
+  async checkUserProfile(userUUID) {
+    try {
+      const userRef = doc(this.db, 'users', userUUID);
+      const userSnap = await getDoc(userRef);
+      
+      if (userSnap.exists()) {
+        console.log(`✅ User profile found for: ${userUUID}`);
+        return { 
+          exists: true, 
+          profile: userSnap.data(),
+          requiresSetup: !userSnap.data().profile?.setup_completed 
+        };
+      } else {
+        console.log(`ℹ️ No user profile found for: ${userUUID}`);
+        return { 
+          exists: false, 
+          profile: null,
+          requiresSetup: true 
+        };
+      }
+    } catch (error) {
+      console.error('❌ Failed to check user profile:', error);
+      return { 
+        exists: false, 
+        profile: null, 
+        requiresSetup: true,
+        error: error.message 
+      };
+    }
+  }
+
+  // Create new user with CSS structure (only when explicitly requested)
+  async createNewUser(userUUID, profileData = {}) {
     try {
       // Create user document
       const userRef = doc(this.db, 'users', userUUID);
@@ -158,11 +231,18 @@ class BrowserMemoryHooks {
         current_stage: 'pointed_origin',
         journey_started: serverTimestamp(),
         profile: {
-          therapeutic_goals: [],
+          setup_completed: true,
+          therapeutic_goals: profileData.therapeutic_goals || [],
           preferences: {
-            session_length: 'standard',
-            intensity: 'moderate',
-            communication_style: 'conversational'
+            session_length: profileData.session_length || 'standard',
+            intensity: profileData.intensity || 'moderate',
+            communication_style: profileData.communication_style || 'conversational',
+            ...profileData.preferences
+          },
+          personal_info: {
+            display_name: profileData.display_name || '',
+            timezone: profileData.timezone || 'UTC',
+            ...profileData.personal_info
           }
         },
         metrics: {
@@ -322,9 +402,20 @@ class BrowserMemoryHooks {
     }
   }
 
-  // Retrieve conversation history
+  // Retrieve conversation history (with user check)
   async getConversationHistory(userUUID, limit = 20) {
     try {
+      // First check if user exists
+      const userCheck = await this.checkUserProfile(userUUID);
+      if (!userCheck.exists) {
+        console.log(`ℹ️ No user profile found for conversation history: ${userUUID}`);
+        return {
+          conversations: [],
+          requires_profile_creation: true,
+          message: 'Please create a user profile to access conversation history'
+        };
+      }
+
       const userContextRef = collection(this.db, 'users', userUUID, 'user_context');
       const q = query(
         userContextRef,
@@ -342,14 +433,22 @@ class BrowserMemoryHooks {
         });
       });
       
-      return conversations.reverse(); // Return in chronological order
+      console.log(`✅ Retrieved ${conversations.length} conversation messages from user_context`);
+      return {
+        conversations: conversations.reverse(), // Return in chronological order
+        requires_profile_creation: false
+      };
     } catch (error) {
       console.error('❌ Failed to get conversation history:', error);
       
       // Fallback to localStorage
       const storageKey = `memory_vasa_${userUUID}`;
       const localData = JSON.parse(localStorage.getItem(storageKey) || '[]');
-      return localData.slice(-limit);
+      return {
+        conversations: localData.slice(-limit),
+        requires_profile_creation: false,
+        source: 'localStorage_fallback'
+      };
     }
   }
 
@@ -436,6 +535,25 @@ class BrowserMemoryHooks {
     } catch (error) {
       console.error('❌ Failed to get user metrics:', error);
       return {};
+    }
+  }
+
+  // Update user profile setup status
+  async completeProfileSetup(userUUID, additionalData = {}) {
+    try {
+      const userRef = doc(this.db, 'users', userUUID);
+      await updateDoc(userRef, {
+        'profile.setup_completed': true,
+        'profile.setup_completed_at': serverTimestamp(),
+        ...additionalData,
+        last_active: serverTimestamp()
+      });
+      
+      console.log(`✅ Profile setup completed for user: ${userUUID}`);
+      return { success: true };
+    } catch (error) {
+      console.error('❌ Failed to complete profile setup:', error);
+      return { success: false, error: error.message };
     }
   }
 
