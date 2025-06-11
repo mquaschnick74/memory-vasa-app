@@ -545,7 +545,7 @@ function LoginComponent({ onUserAuthenticated }) {
   );
 }
 
-// SIMPLIFIED User UUID Detector Component - using your AuthProfileGuard
+// SIMPLIFIED User UUID Detector Component - WITH DEBUG LOGGING
 function UserUUIDDetector({ children }) {
   const [userUUID, setUserUUID] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -558,7 +558,7 @@ function UserUUIDDetector({ children }) {
       // Method 1: From localStorage (your current auth)
       const storedUUID = localStorage.getItem('userUUID');
       if (storedUUID) {
-        console.log('🔍 Found userUUID in localStorage:', storedUUID);
+        console.log('🔍 UserUUIDDetector: Found userUUID in localStorage:', storedUUID);
         setUserUUID(storedUUID);
         setLoading(false);
         return;
@@ -567,21 +567,21 @@ function UserUUIDDetector({ children }) {
       // Method 2: Check if auth service has current user - FIXED to use singleton
       const checkAuthService = async () => {
         try {
-          console.log('🔍 Checking auth service for current user...');
+          console.log('🔍 UserUUIDDetector: Checking auth service for current user...');
           // FIXED: Use singleton instead of creating new instance
           const auth = getBrowserAuthService();
           const currentUser = auth.getCurrentUser();
           
           if (currentUser && currentUser.uid) {
-            console.log('🔍 Found userUUID from auth service:', currentUser.uid);
+            console.log('🔍 UserUUIDDetector: Found userUUID from auth service:', currentUser.uid);
             setUserUUID(currentUser.uid);
             localStorage.setItem('userUUID', currentUser.uid);
           } else {
-            console.log('🔍 No authenticated user found in auth service');
+            console.log('🔍 UserUUIDDetector: No authenticated user found in auth service');
             setUserUUID(null);
           }
         } catch (error) {
-          console.error('🚨 Failed to check auth service:', error);
+          console.error('🚨 UserUUIDDetector: Failed to check auth service:', error);
           setUserUUID(null);
         } finally {
           setLoading(false);
@@ -596,7 +596,7 @@ function UserUUIDDetector({ children }) {
     // Listen for userUUID changes in localStorage
     const handleStorageChange = (e) => {
       if (e.key === 'userUUID') {
-        console.log('🔍 UserUUID changed in localStorage:', e.newValue);
+        console.log('🔍 UserUUIDDetector: UserUUID changed in localStorage:', e.newValue);
         setUserUUID(e.newValue);
       }
     };
@@ -606,12 +606,21 @@ function UserUUIDDetector({ children }) {
   }, []);
 
   const handleUserAuthenticated = (authenticatedUserUUID) => {
-    console.log('🎉 UserUUIDDetector: User authenticated callback:', authenticatedUserUUID);
+    console.log('🎉 UserUUIDDetector: User authenticated callback received:', authenticatedUserUUID);
     setUserUUID(authenticatedUserUUID);
+    setLoading(false);
   };
 
+  // 🔍 DEBUG: Log current render state
+  console.log('🔍 UserUUIDDetector: Current render state:', { 
+    loading, 
+    userUUID, 
+    hasUserUUID: !!userUUID,
+    userUUIDType: typeof userUUID
+  });
+
   if (loading) {
-    console.log('🔍 UserUUIDDetector showing loading state');
+    console.log('🔍 UserUUIDDetector: Showing loading state');
     return (
       <div style={{
         display: 'flex',
@@ -629,27 +638,77 @@ function UserUUIDDetector({ children }) {
 
   // If no userUUID, show login component
   if (!userUUID) {
-    console.log('🔍 UserUUIDDetector: No userUUID, showing LoginComponent');
+    console.log('🔍 UserUUIDDetector: No userUUID found, rendering LoginComponent');
     return <LoginComponent onUserAuthenticated={handleUserAuthenticated} />;
   }
 
   // UPDATED: Use your AuthProfileGuard instead of embedded ProfileGuard
-  console.log('🔍 UserUUIDDetector: UserUUID exists, using AppWithProfileGuard:', userUUID);
-  return (
-    <AppWithProfileGuard userUUID={userUUID}>
-      {children}
-    </AppWithProfileGuard>
-  );
+  console.log('🔍 UserUUIDDetector: UserUUID exists, preparing to render AppWithProfileGuard');
+  console.log('🔍 UserUUIDDetector: UserUUID value:', userUUID);
+  console.log('🔍 UserUUIDDetector: Children type:', typeof children);
+  console.log('🔍 UserUUIDDetector: About to render AppWithProfileGuard with VASAInterface');
+  
+  try {
+    const result = (
+      <AppWithProfileGuard userUUID={userUUID}>
+        {children}
+      </AppWithProfileGuard>
+    );
+    console.log('🔍 UserUUIDDetector: Successfully created AppWithProfileGuard component');
+    return result;
+  } catch (error) {
+    console.error('🚨 UserUUIDDetector: Error rendering AppWithProfileGuard:', error);
+    return (
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        height: '100vh',
+        backgroundColor: '#ff6b6b',
+        color: '#ffffff',
+        fontFamily: 'system-ui, -apple-system, sans-serif'
+      }}>
+        <div style={{ textAlign: 'center' }}>
+          <h2>Error Loading Profile Guard</h2>
+          <p>Check console for details</p>
+          <p>UserUUID: {userUUID}</p>
+        </div>
+      </div>
+    );
+  }
 }
 
-// Main App Component
+// Main App Component - WITH DEBUG LOGGING
 function App() {
-  console.log('🔍 App component rendered');
-  return (
-    <UserUUIDDetector>
-      <VASAInterface />
-    </UserUUIDDetector>
-  );
+  console.log('🔍 App: Component rendered at', new Date().toISOString());
+  
+  try {
+    const result = (
+      <UserUUIDDetector>
+        <VASAInterface />
+      </UserUUIDDetector>
+    );
+    console.log('🔍 App: Successfully created UserUUIDDetector with VASAInterface');
+    return result;
+  } catch (error) {
+    console.error('🚨 App: Error in main app component:', error);
+    return (
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        height: '100vh',
+        backgroundColor: '#ff6b6b',
+        color: '#ffffff',
+        fontFamily: 'system-ui, -apple-system, sans-serif'
+      }}>
+        <div style={{ textAlign: 'center' }}>
+          <h2>Application Error</h2>
+          <p>Check console for details</p>
+        </div>
+      </div>
+    );
+  }
 }
 
 export default App;
