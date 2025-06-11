@@ -280,82 +280,103 @@ const VASAInterface = () => {
     let tabHiddenTime = null;
     let logoutTimer = null;
 
-    // Function to perform logout cleanup
-    const performLogoutCleanup = async () => {
-      try {
-        console.log('🔍 Performing auto-logout cleanup...');
+    console.log('🔍 Setting up auto-logout listeners...');
 
-        // End any active conversation
+    // Function to clear all data immediately (for fast page unloads)
+    const immediateCleanup = () => {
+      console.log('🔍 Performing immediate cleanup...');
+      localStorage.removeItem('userUUID');
+      localStorage.removeItem('terms_accepted');
+      localStorage.removeItem('currentStage');
+      localStorage.removeItem('stageHistory');
+    };
+
+    // Function to perform full logout cleanup
+    const performFullLogout = async () => {
+      try {
+        console.log('🔍 Performing full auto-logout...');
+
+        // End any active conversation first
         if (conversation.status === 'connected') {
+          console.log('🔍 Ending VASA conversation...');
           await conversation.endSession();
         }
 
-        // Sign out from Firebase
-        const { default: BrowserAuthService } = await import('./services/BrowserAuthService.js');
-        const auth = new BrowserAuthService();
-        await auth.signOut();
+        // Clear localStorage immediately
+        immediateCleanup();
 
-        // Clear localStorage
-        localStorage.removeItem('userUUID');
-        localStorage.removeItem('terms_accepted');
-        localStorage.removeItem('currentStage');
-        localStorage.removeItem('stageHistory');
+        // Try Firebase signout (may fail if page is closing)
+        try {
+          const { default: BrowserAuthService } = await import('./services/BrowserAuthService.js');
+          const auth = new BrowserAuthService();
+          await auth.signOut();
+          console.log('✅ Firebase signout successful');
+        } catch (error) {
+          console.log('⚠️ Firebase signout failed (page may be closing):', error.message);
+        }
 
         console.log('✅ Auto-logout completed');
+        return true;
       } catch (error) {
-        console.error('🚨 Auto-logout cleanup failed:', error);
-        // Still clear localStorage even if Firebase signout fails
-        localStorage.removeItem('userUUID');
-        localStorage.removeItem('terms_accepted');
-        localStorage.removeItem('currentStage');
-        localStorage.removeItem('stageHistory');
+        console.error('🚨 Auto-logout error:', error);
+        // Still clear localStorage even if other cleanup fails
+        immediateCleanup();
+        return false;
       }
     };
 
     // Handle page unload (when user closes tab/window or navigates away)
     const handleBeforeUnload = (event) => {
-      console.log('🔍 Page unloading - performing logout...');
+      console.log('🔍 beforeunload triggered - immediate logout');
+      immediateCleanup();
       
-      // Synchronous cleanup for immediate page unload
-      localStorage.removeItem('userUUID');
-      localStorage.removeItem('terms_accepted');
-      localStorage.removeItem('currentStage');
-      localStorage.removeItem('stageHistory');
+      // Try to perform full logout (may not complete)
+      performFullLogout().catch(console.error);
+      
+      // Don't prevent the page from unloading
+      return undefined;
+    };
 
-      // Try to sign out (may not complete if page closes quickly)
-      performLogoutCleanup().catch(console.error);
+    // Handle page hide (more reliable than beforeunload)
+    const handlePageHide = () => {
+      console.log('🔍 pagehide triggered - immediate logout');
+      immediateCleanup();
+      performFullLogout().catch(console.error);
     };
 
     // Handle visibility change (when user switches tabs)
     const handleVisibilityChange = () => {
+      console.log('🔍 Visibility changed:', document.hidden ? 'hidden' : 'visible');
+      
       if (document.hidden) {
-        // Tab became hidden - start timer
+        // Tab became hidden - start 5 minute timer
         tabHiddenTime = Date.now();
-        console.log('🔍 Tab hidden - starting auto-logout timer (5 minutes)');
+        console.log('⏰ Starting 5-minute auto-logout timer');
         
-        // Set timeout for 5 minutes of inactivity
-        logoutTimer = setTimeout(() => {
-          console.log('🔍 Tab hidden for 5 minutes - performing auto-logout');
-          performLogoutCleanup().then(() => {
-            // Reload page to show login screen when user returns
-            window.location.reload();
-          });
+        logoutTimer = setTimeout(async () => {
+          console.log('⏰ 5 minutes elapsed - performing auto-logout');
+          await performFullLogout();
+          // Reload page when they return to show login screen
+          window.location.reload();
         }, 5 * 60 * 1000); // 5 minutes
+        
       } else {
-        // Tab became visible - cancel timer if it hasn't been too long
+        // Tab became visible - check how long it was hidden
         if (logoutTimer) {
           clearTimeout(logoutTimer);
           logoutTimer = null;
+          console.log('⏰ Cancelled auto-logout timer');
         }
         
         if (tabHiddenTime) {
           const hiddenDuration = Date.now() - tabHiddenTime;
-          console.log(`🔍 Tab visible again after ${Math.round(hiddenDuration / 1000)} seconds`);
+          const hiddenMinutes = Math.round(hiddenDuration / 60000);
+          console.log(`👁️ Tab visible again after ${hiddenMinutes} minutes`);
           
           // If hidden for more than 5 minutes, logout anyway
           if (hiddenDuration > 5 * 60 * 1000) {
-            console.log('🔍 Tab was hidden for more than 5 minutes - performing logout');
-            performLogoutCleanup().then(() => {
+            console.log('⚠️ Hidden too long - performing logout');
+            performFullLogout().then(() => {
               window.location.reload();
             });
           }
@@ -365,35 +386,33 @@ const VASAInterface = () => {
       }
     };
 
-    // Handle page focus loss (additional safety net)
-    const handleWindowBlur = () => {
-      console.log('🔍 Window lost focus');
-      // Don't logout immediately on blur, just log it
-    };
-
-    const handleWindowFocus = () => {
-      console.log('🔍 Window gained focus');
-      // Check if we should still be logged in
-    };
-
-    // Add event listeners
+    // Add all event listeners
     window.addEventListener('beforeunload', handleBeforeUnload);
+    window.addEventListener('pagehide', handlePageHide);
     document.addEventListener('visibilitychange', handleVisibilityChange);
-    window.addEventListener('blur', handleWindowBlur);
-    window.addEventListener('focus', handleWindowFocus);
+
+    console.log('✅ Auto-logout listeners attached');
+
+    // Test the logout timer (uncomment for testing)
+    // setTimeout(() => {
+    //   console.log('🧪 Testing auto-logout in 10 seconds...');
+    //   setTimeout(() => performFullLogout().then(() => window.location.reload()), 10000);
+    // }, 1000);
 
     // Cleanup function
     return () => {
+      console.log('🔍 Cleaning up auto-logout listeners...');
+      
       window.removeEventListener('beforeunload', handleBeforeUnload);
+      window.removeEventListener('pagehide', handlePageHide);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
-      window.removeEventListener('blur', handleWindowBlur);
-      window.removeEventListener('focus', handleWindowFocus);
       
       if (logoutTimer) {
         clearTimeout(logoutTimer);
+        console.log('⏰ Cleared logout timer');
       }
     };
-  }, [conversation]);
+  }, [conversation.status]); // Only depend on conversation status
 
   // Save stage data when it changes
   useEffect(() => {
@@ -668,12 +687,24 @@ const VASAInterface = () => {
           display: 'flex', 
           justifyContent: 'space-between', 
           alignItems: 'center',
-          width: '100%'
+          width: '100%',
+          position: 'relative'
         }}>
-          <div></div> {/* Empty div for spacing */}
-          <h1 style={styles.title}>VASA Memory Interface</h1>
+          {/* Left spacer */}
+          <div style={{ width: '100px' }}></div>
           
-          {/* Logout Button */}
+          {/* Centered title */}
+          <h1 style={{
+            ...styles.title,
+            position: 'absolute',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            margin: 0
+          }}>
+            VASA Memory Interface
+          </h1>
+          
+          {/* Right-aligned Logout Button */}
           <button
             onClick={handleLogout}
             disabled={isLoggingOut}
@@ -687,7 +718,10 @@ const VASAInterface = () => {
               cursor: isLoggingOut ? 'not-allowed' : 'pointer',
               transition: 'all 0.3s ease',
               fontWeight: 'bold',
-              opacity: isLoggingOut ? 0.6 : 1
+              opacity: isLoggingOut ? 0.6 : 1,
+              zIndex: 10,
+              minWidth: '80px',
+              textAlign: 'center'
             }}
             onMouseOver={(e) => {
               if (!isLoggingOut) {
