@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useUserProfile } from './memory/BrowserMemoryHooks.js';
+import { useUserProfile } from '../memory/BrowserMemoryHooks.js';
 
 // Authentication Profile Guard - prevents access without profile
 export function AuthProfileGuard({ userUUID, children, onProfileRequired, onSetupRequired }) {
