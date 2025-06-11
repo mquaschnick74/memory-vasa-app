@@ -5,23 +5,13 @@ import AudioVisualizer from './AudioVisualizer';
 // BROWSER-ONLY MEMORY HOOKS (no server dependencies)
 import { useConversationMemory, useStageMemory, useUserProfile, useConversationContext, getBrowserMemoryManager } from './memory/BrowserMemoryHooks.js';
 
-// Note: WebhookHandler and MemoryDashboard can be added back later if needed
-
-// Main VASA Component
+// Main VASA Component (Auth logic removed - handled by App.jsx ProfileGuard)
 const VASAInterface = () => {
-  // State management
-  const [userUUID, setUserUUID] = useState(null);
-  const [symbolicName, setSymbolicName] = useState('');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  // Get userUUID from localStorage (set by ProfileGuard in App.jsx)
+  const [userUUID] = useState(() => localStorage.getItem('userUUID'));
   const [currentStage, setCurrentStage] = useState('⊙');
   const [stageHistory, setStageHistory] = useState([]);
-  const [conversationContext, setConversationContext] = useState('');
   const [micPermission, setMicPermission] = useState(false);
-  const [isRegistered, setIsRegistered] = useState(false);
-  const [authStep, setAuthStep] = useState('login'); // 'login', 'register', 'verify_email', 'verified'
-  const [authService, setAuthService] = useState(null);
-  const [isEmailVerified, setIsEmailVerified] = useState(false);
   const [agentId] = useState('nJeN1YQZyK0aTu2SoJnM'); // Hardcoded agent ID
   const [buttonState, setButtonState] = useState('resting'); // resting, connecting, connected, thinking
   const [termsAccepted, setTermsAccepted] = useState(false);
@@ -34,87 +24,22 @@ const VASAInterface = () => {
 
   // Memory system hooks
   const { 
-    conversationHistory, 
-    addConversation, 
-    isLoading: memoryLoading 
+    conversations,
+    storeConversation, 
+    loading: memoryLoading 
   } = useConversationMemory(userUUID);
 
   const { 
-    recordStageTransition 
+    updateStageProgression 
   } = useStageMemory(userUUID);
 
   const { 
-    profile, 
-    updateProfile 
+    profile 
   } = useUserProfile(userUUID);
 
   const {
-    context,
-    getContext
+    context
   } = useConversationContext(userUUID);
-
-  // Initialize AuthService
-  useEffect(() => {
-    const initAuthService = async () => {
-      try {
-        const { default: BrowserAuthService } = await import('./services/BrowserAuthService.js');
-        const auth = new BrowserAuthService();
-        setAuthService(auth);
-
-        // Listen for auth state changes (prevent duplicate listeners)
-        if (!authService) {
-          auth.onAuthStateChanged(async (user) => {
-          if (user) {
-            setUserUUID(user.uid);
-            setIsEmailVerified(user.emailVerified);
-            if (user.emailVerified) {
-              setAuthStep('verified');
-              setIsRegistered(true);
-
-              // Try to load the user's profile to get their symbolic name
-              try {
-                const manager = getBrowserMemoryManager();
-                const profile = await manager.getUserProfile(user.uid);
-                if (profile && profile.symbolicName) {
-                  console.log('Auto-loaded profile on auth change:', profile);
-                  setSymbolicName(profile.symbolicName);
-                } else {
-                  // If no profile or symbolicName, create/update profile with email
-                  console.log('No profile found or missing symbolicName, creating/updating profile');
-                  const profileData = {
-                    symbolicName: user.email.split('@')[0], // Use part before @ as symbolic name
-                    email: user.email,
-                    lastLogin: new Date().toISOString(),
-                    emailVerified: user.emailVerified
-                  };
-
-                  const manager = getBrowserMemoryManager();
-                  await manager.storeUserProfile(user.uid, profileData);
-                  setSymbolicName(profileData.symbolicName);
-                }
-              } catch (error) {
-                console.error('Failed to auto-load profile:', error);
-                setSymbolicName(user.email.split('@')[0] || 'User');
-              }
-            } else {
-              setAuthStep('verify_email');
-            }
-          } else {
-            setUserUUID(null);
-            setSymbolicName('');
-            setIsEmailVerified(false);
-            setAuthStep('login');
-            setIsRegistered(false);
-          }
-        });
-        }
-      } catch (error) {
-        console.error('Failed to initialize AuthService:', error);
-      }
-    };
-
-    initAuthService();
-  }, []);
 
   // CSS Stage detection function
   const detectStage = (response) => {
@@ -162,7 +87,7 @@ const VASAInterface = () => {
         setTimeout(async () => {
           if (conversation.sendMessage) {
             console.log('📤 Sending initial greeting to VASA');
-            await conversation.sendMessage("Hello VASA, I'd like to begin our symbolic work together.");
+            await conversation.sendMessage(`Hello VASA, I'm ${profile?.profile?.personal_info?.display_name || 'ready'} to begin our symbolic work together.`);
           }
         }, 500);
       }
@@ -185,7 +110,7 @@ const VASAInterface = () => {
 
       // Store in persistent memory
       if (userUUID) {
-        await recordStageTransition(transitionData);
+        await updateStageProgression(currentStage, transitionData);
       }
 
       console.log(`🔄 Stage transition: ${currentStage} → ${newStage}`);
@@ -242,12 +167,12 @@ const VASAInterface = () => {
         // Store in persistent memory with better error handling
         if (userUUID) {
           console.log('💾 Storing conversation:', conversationEntry);
-          addConversation(conversationEntry).catch(error => {
+          storeConversation(conversationEntry).catch(error => {
             console.warn('Failed to store conversation in backend:', error);
           });
         }
 
-        console.log('💬 Conversation message stored locally, webhook will handle backend storage');
+        console.log('💬 Conversation message stored locally');
       }
     },
     onError: (error) => {
@@ -278,23 +203,10 @@ const VASAInterface = () => {
       }
     };
 
-    // Load saved user data
-    const loadUserData = () => {
-      const savedUUID = localStorage.getItem('userUUID');
-      const savedName = localStorage.getItem('symbolicName');
+    // Load saved stage data
+    const loadSavedStageData = () => {
       const savedStage = localStorage.getItem('currentStage');
       const savedHistory = localStorage.getItem('stageHistory');
-
-      if (savedUUID && savedName) {
-        setUserUUID(savedUUID);
-        setSymbolicName(savedName);
-
-        // Verify the name-to-UUID mapping is still valid
-        const nameMapping = localStorage.getItem(`name_${savedName}`);
-        if (!nameMapping || nameMapping !== savedUUID) {
-          localStorage.setItem(`name_${savedName}`, savedUUID);
-        }
-      }
 
       if (savedStage) {
         setCurrentStage(savedStage);
@@ -312,34 +224,14 @@ const VASAInterface = () => {
 
     checkTermsAcceptance();
     checkMicPermission();
-    loadUserData();
-
-     // Automatically log out user if the page is refreshed or closed
-     const handleBeforeUnload = () => {
-      localStorage.removeItem('userUUID');
-      localStorage.removeItem('symbolicName');
-      localStorage.removeItem('currentStage');
-      localStorage.removeItem('stageHistory');
-    };
-
-    window.addEventListener('beforeunload', handleBeforeUnload);
-
-    return () => {
-      window.removeEventListener('beforeunload', handleBeforeUnload);
-    };
+    loadSavedStageData();
   }, []);
 
-  // Save user data when it changes
+  // Save stage data when it changes
   useEffect(() => {
-    if (userUUID) {
-      localStorage.setItem('userUUID', userUUID);
-    }
-    if (symbolicName) {
-      localStorage.setItem('symbolicName', symbolicName);
-    }
     localStorage.setItem('currentStage', currentStage);
     localStorage.setItem('stageHistory', JSON.stringify(stageHistory));
-  }, [userUUID, symbolicName, currentStage, stageHistory]);
+  }, [currentStage, stageHistory]);
 
   // Request microphone permission
   const requestMicPermission = async () => {
@@ -351,201 +243,6 @@ const VASAInterface = () => {
       console.error('Microphone access denied');
       alert('Microphone access is required for voice chat');
       return false;
-    }
-  };
-
-  // Handle user registration with email
-  const handleRegister = async () => {
-    if (!email.trim() || !password.trim() || !symbolicName.trim()) {
-      alert('Please fill in all fields');
-      return;
-    }
-
-    if (!authService) {
-      alert('Authentication service not ready');
-      return;
-    }
-
-    try {
-      const user = await authService.createUserWithEmail(email, password);
-
-      // Send email verification
-      await authService.sendEmailVerification();
-
-      // Store user profile with symbolic name AND email
-      const profileData = {
-        symbolicName,
-        email,
-        registrationDate: new Date().toISOString(),
-        currentStage,
-        sessionCount: 0,
-        emailVerified: false
-      };
-      const manager = getBrowserMemoryManager();
-      await manager.storeUserProfile(user.uid, profileData);
-
-      setAuthStep('verify_email');
-      alert('Account created! Please check your email and click the verification link.');
-    } catch (error) {
-      console.error('Registration failed:', error);
-      alert('Registration failed: ' + error.message);
-    }
-  };
-
-  // Handle user login with email
-  const handleLogin = async () => {
-    if (!email.trim() || !password.trim()) {
-      alert('Please enter email and password');
-      return;
-    }
-
-    if (!authService) {
-      alert('Authentication service not ready');
-      return;
-    }
-
-    try {
-      const user = await authService.signInWithEmail(email, password);
-
-      if (user.emailVerified) {
-        // Load user profile to get symbolic name
-        try {
-          const manager = getBrowserMemoryManager();
-          const profile = await manager.getUserProfile(user.uid);
-          if (profile && profile.symbolicName) {
-            console.log('Profile loaded:', profile);
-            setSymbolicName(profile.symbolicName);
-
-            // Update profile with login timestamp and ensure email is stored
-            await manager.storeUserProfile(user.uid, {
-              lastLogin: new Date().toISOString(),
-              email: user.email,
-              emailVerified: user.emailVerified
-            });
-
-            setAuthStep('verified');
-            setIsRegistered(true);
-          } else {
-            // Profile not found or missing symbolic name, create it
-            console.log('No profile found or missing symbolicName, creating profile');
-            const profileData = {
-              symbolicName: user.email.split('@')[0], // Use part before @ as symbolic name
-              email: user.email,
-              lastLogin: new Date().toISOString(),
-              emailVerified: user.emailVerified,
-              currentStage: '⊙',
-              sessionCount: 1
-            };
-
-            const manager = getBrowserMemoryManager();
-            await manager.storeUserProfile(user.uid, profileData);
-            setSymbolicName(profileData.symbolicName);
-            setAuthStep('verified');
-            setIsRegistered(true);
-          }
-        } catch (profileError) {
-          console.error('Failed to load profile:', profileError);
-          // Use email as fallback if profile loading fails
-          setSymbolicName(user.email.split('@')[0] || 'User');
-          setAuthStep('verified');
-          setIsRegistered(true);
-        }
-      } else {
-        setAuthStep('verify_email');
-        alert('Please verify your email before continuing');
-      }
-    } catch (error) {
-      console.error('Login failed:', error);
-      alert('Login failed: ' + error.message);
-    }
-  };
-
-  // Check email verification status
-  const checkEmailVerification = async () => {
-    if (!authService) return;
-
-    try {
-      const isVerified = await authService.reloadUser();
-      if (isVerified) {
-        const currentUser = authService.getCurrentUser();
-        setIsEmailVerified(true);
-        setAuthStep('verified');
-        setIsRegistered(true);
-
-        // Load user profile with better error handling
-        try {
-          const manager = getBrowserMemoryManager();
-          const profile = await manager.getUserProfile(currentUser.uid);
-          if (profile) {
-            console.log('Profile loaded after verification:', profile);
-            setSymbolicName(profile.symbolicName || currentUser.email.split('@')[0] || 'User');
-
-            // Update profile to mark email as verified
-            await manager.storeUserProfile(currentUser.uid, {
-              emailVerified: true,
-              lastLogin: new Date().toISOString(),
-              email: currentUser.email
-            });
-          } else {
-            console.log('No profile found after verification, creating one');
-            const profileData = {
-              symbolicName: currentUser.email.split('@')[0] || 'User',
-              email: currentUser.email,
-              emailVerified: true,
-              lastLogin: new Date().toISOString(),
-              registrationDate: new Date().toISOString(),
-              currentStage: '⊙',
-              sessionCount: 1
-            };
-
-            const manager = getBrowserMemoryManager();
-            await manager.storeUserProfile(currentUser.uid, profileData);
-            setSymbolicName(profileData.symbolicName);
-          }
-        } catch (profileError) {
-          console.error('Failed to load profile after verification:', profileError);
-          setSymbolicName(currentUser.email.split('@')[0] || 'User');
-        }
-
-        alert('Email verified successfully! Welcome to VASA.');
-      } else {
-        alert('Email not yet verified. Please check your email.');
-      }
-    } catch (error) {
-      console.error('Verification check failed:', error);
-      alert('Failed to check verification status');
-    }
-  };
-
-  // Resend verification email
-  const resendVerificationEmail = async () => {
-    if (!authService) return;
-
-    try {
-      await authService.sendEmailVerification();
-      alert('Verification email sent! Please check your inbox.');
-    } catch (error) {
-      console.error('Failed to resend verification:', error);
-      alert('Failed to send verification email');
-    }
-  };
-
-  // Sign out
-  const handleSignOut = async () => {
-    if (!authService) return;
-
-    try {
-      await authService.signOut();
-      setUserUUID(null);
-      setSymbolicName('');
-      setEmail('');
-      setPassword('');
-      setIsRegistered(false);
-      setIsEmailVerified(false);
-      setAuthStep('login');
-      localStorage.clear();
-    } catch (error) {
-      console.error('Sign out failed:', error);
     }
   };
 
@@ -649,6 +346,23 @@ const VASAInterface = () => {
 
   const buttonConfig = getButtonConfig();
 
+  // Show error if no userUUID (should not happen with ProfileGuard)
+  if (!userUUID) {
+    return (
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        height: '100vh',
+        backgroundColor: '#b23cfc',
+        color: '#ffffff',
+        fontFamily: 'system-ui, -apple-system, sans-serif'
+      }}>
+        <p>Authentication required. Please refresh the page.</p>
+      </div>
+    );
+  }
+
   // Styles for main interface
   const styles = {
     container: {
@@ -670,284 +384,8 @@ const VASAInterface = () => {
     title: {
       fontSize: '2rem',
       fontWeight: 'bold'
-    },
-    userInfo: {
-      marginTop: '10px',
-      fontSize: '0.9rem',
-      color: '#ffffff80'
-    },
-    userName: {
-      marginRight: '10px'
-    },
-    userStage: {
-      marginRight: '10px'
-    },
-    userId: {
-      marginRight: '10px'
     }
   };
-
-  // Authentication screens
-  if (!isRegistered || authStep !== 'verified') {
-    return (
-      <div style={{ 
-        ...styles.container, 
-        justifyContent: 'center', 
-        alignItems: 'center',
-        textAlign: 'center',
-        padding: '40px'
-      }}>
-        <div style={{
-          backgroundColor: 'rgba(255, 255, 255, 0.1)',
-          padding: '40px',
-          borderRadius: '20px',
-          maxWidth: '500px',
-          width: '100%'
-        }}>
-          <h1 style={{ 
-            fontSize: '2.5rem', 
-            marginBottom: '20px',
-            background: 'linear-gradient(45deg, #ff6b6b, #4ecdc4, #45b7d1, #96ceb4, #ffecd2)',
-            WebkitBackgroundClip: 'text',
-            WebkitTextFillColor: 'transparent',
-            backgroundSize: '300% 300%',
-            animation: 'gradient 3s ease infinite'
-          }}>
-            VASA
-          </h1>
-
-          {authStep === 'login' && (
-            <>
-              <p style={{ fontSize: '1.2rem', marginBottom: '30px', opacity: 0.9 }}>
-                Sign in to your account
-              </p>
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="Email address"
-                style={{
-                  padding: '15px',
-                  fontSize: '1.1rem',
-                  border: 'none',
-                  borderRadius: '10px',
-                  width: '100%',
-                  marginBottom: '15px',
-                  backgroundColor: 'rgba(255, 255, 255, 0.9)',
-                  color: '#333'
-                }}
-              />
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="Password"
-                style={{
-                  padding: '15px',
-                  fontSize: '1.1rem',
-                  border: 'none',
-                  borderRadius: '10px',
-                  width: '100%',
-                  marginBottom: '20px',
-                  backgroundColor: 'rgba(255, 255, 255, 0.9)',
-                  color: '#333'
-                }}
-                onKeyPress={(e) => {
-                  if (e.key === 'Enter') {
-                    handleLogin();
-                  }
-                }}
-              />
-              <button
-                onClick={handleLogin}
-                style={{
-                  padding: '15px 30px',
-                  fontSize: '1.1rem',
-                  backgroundColor: '#4CAF50',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '10px',
-                  cursor: 'pointer',
-                  width: '100%',
-                  fontWeight: 'bold',
-                  marginBottom: '15px'
-                }}
-              >
-                Sign In
-              </button>
-              <button
-                onClick={() => setAuthStep('register')}
-                style={{
-                  padding: '10px 20px',
-                  fontSize: '1rem',
-                  backgroundColor: 'transparent',
-                  color: 'white',
-                  border: '2px solid white',
-                  borderRadius: '10px',
-                  cursor: 'pointer',
-                  width: '100%'
-                }}
-              >
-                Create New Account
-              </button>
-            </>
-          )}
-
-          {authStep === 'register' && (
-            <>
-              <p style={{ fontSize: '1.2rem', marginBottom: '30px', opacity: 0.9 }}>
-                Create your account
-              </p>
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="Email address"
-                style={{
-                  padding: '15px',
-                  fontSize: '1.1rem',
-                  border: 'none',
-                  borderRadius: '10px',
-                  width: '100%',
-                  marginBottom: '15px',
-                  backgroundColor: 'rgba(255, 255, 255, 0.9)',
-                  color: '#333'
-                }}
-              />
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="Password (min 6 characters)"
-                style={{
-                  padding: '15px',
-                  fontSize: '1.1rem',
-                  border: 'none',
-                  borderRadius: '10px',
-                  width: '100%',
-                  marginBottom: '15px',
-                  backgroundColor: 'rgba(255, 255, 255, 0.9)',
-                  color: '#333'
-                }}
-              />
-              <input
-                type="text"
-                value={symbolicName}
-                onChange={(e) => setSymbolicName(e.target.value)}
-                placeholder="Your symbolic name"
-                style={{
-                  padding: '15px',
-                  fontSize: '1.1rem',
-                  border: 'none',
-                  borderRadius: '10px',
-                  width: '100%',
-                  marginBottom: '20px',
-                  backgroundColor: 'rgba(255, 255, 255, 0.9)',
-                  color: '#333'
-                }}
-                onKeyPress={(e) => {
-                  if (e.key === 'Enter') {
-                    handleRegister();
-                  }
-                }}
-              />
-              <button
-                onClick={handleRegister}
-                style={{
-                  padding: '15px 30px',
-                  fontSize: '1.1rem',
-                  backgroundColor: '#4CAF50',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '10px',
-                  cursor: 'pointer',
-                  width: '100%',
-                  fontWeight: 'bold',
-                  marginBottom: '15px'
-                }}
-              >
-                Create Account
-              </button>
-              <button
-                onClick={() => setAuthStep('login')}
-                style={{
-                  padding: '10px 20px',
-                  fontSize: '1rem',
-                  backgroundColor: 'transparent',
-                  color: 'white',
-                  border: '2px solid white',
-                  borderRadius: '10px',
-                  cursor: 'pointer',
-                  width: '100%'
-                }}
-              >
-                Back to SignIn
-              </button>
-            </>
-          )}
-
-          {authStep === 'verify_email' && (
-            <>
-              <p style={{ fontSize: '1.2rem', marginBottom: '20px', opacity: 0.9 }}>
-                Email Verification Required
-              </p>
-              <p style={{ fontSize: '1rem', marginBottom: '30px', opacity: 0.8 }}>
-                Please check your email and click the verification link to continue.
-              </p>
-              <button
-                onClick={checkEmailVerification}
-                style={{
-                  padding: '15px 30px',
-                  fontSize: '1.1rem',
-                  backgroundColor: '#4CAF50',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '10px',
-                  cursor: 'pointer',
-                  width: '100%',
-                  fontWeight: 'bold',
-                  marginBottom: '15px'
-                }}
-              >
-                I've Verified My Email
-              </button>
-              <button
-                onClick={resendVerificationEmail}
-                style={{
-                  padding: '10px 20px',
-                  fontSize: '1rem',
-                  backgroundColor: 'transparent',
-                  color: 'white',
-                  border: '2px solid white',
-                  borderRadius: '10px',
-                  cursor: 'pointer',
-                  width: '100%',
-                  marginBottom: '15px'
-                }}
-              >
-                Resend Verification Email
-              </button>
-              <button
-                onClick={handleSignOut}
-                style={{
-                  padding: '8px 16px',
-                  fontSize: '0.9rem',
-                  backgroundColor: 'transparent',
-                  color: '#ff6b6b',
-                  border: '1px solid #ff6b6b',
-                  borderRadius: '10px',
-                  cursor: 'pointer',
-                  width: '100%'
-                }}
-              >
-                Sign Out
-              </button>
-            </>
-          )}
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div style={styles.container} className="bg-black text-white flex flex-col">
@@ -1055,24 +493,22 @@ const VASAInterface = () => {
           </div>
         </div>
       )}
+
       {/* Main Interface */}
-
       <div style={styles.header}>
-          <h1 style={styles.title}>VASA Memory Interface</h1>
+        <h1 style={styles.title}>VASA Memory Interface</h1>
+      </div>
 
-        </div>
-      <div 
-          style={{
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'flex-start',
-            paddingTop: '10px',
-            paddingLeft: '20px',
-            paddingRight: '20px',
-            paddingBottom: '10px'
-          }}
-        >
+      <div style={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'flex-start',
+        paddingTop: '10px',
+        paddingLeft: '20px',
+        paddingRight: '20px',
+        paddingBottom: '10px'
+      }}>
 
         {/* Core Symbol Set Display */}
         <div style={{
@@ -1162,44 +598,38 @@ const VASAInterface = () => {
         </button>
 
         {/* Status Indicators */}
-        <div 
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '24px',
-            marginTop: '24px'
-          }}
-        >
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '24px',
+          marginTop: '24px'
+        }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <div 
-              style={{
-                width: '12px',
-                height: '12px',
-                borderRadius: '50%',
-                backgroundColor: conversation.status === 'connected' ? '#10b981' : '#ef4444'
-              }}
-            ></div>
+            <div style={{
+              width: '12px',
+              height: '12px',
+              borderRadius: '50%',
+              backgroundColor: conversation.status === 'connected' ? '#10b981' : '#ef4444'
+            }}></div>
             <span style={{ fontSize: '14px', color: '#9ca3af' }}>
               {conversation.status === 'connected' ? 'Connected' : 'Disconnected'}
             </span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <div 
-              style={{
-                width: '12px',
-                height: '12px',
-                borderRadius: '50%',
-                backgroundColor: micPermission ? '#10b981' : '#6b7280'
-              }}
-            ></div>
+            <div style={{
+              width: '12px',
+              height: '12px',
+              borderRadius: '50%',
+              backgroundColor: micPermission ? '#10b981' : '#6b7280'
+            }}></div>
             <span style={{ fontSize: '14px', color: '#9ca3af' }}>
               {micPermission ? 'Ready' : 'Mic Access Needed'}
             </span>
           </div>
         </div>
 
-        {/* User Info Section */}
-        {userUUID && (
+        {/* User Info Section - Show profile info instead of auth controls */}
+        {profile && (
           <div style={{
             marginTop: '16px',
             fontSize: '0.9rem',
@@ -1209,21 +639,8 @@ const VASAInterface = () => {
             justifyContent: 'center',
             gap: '15px'
           }}>
-            <span>👤 {symbolicName || 'Unknown User'}</span>
-            <button
-              onClick={handleSignOut}
-              style={{
-                padding: '8px 16px',
-                fontSize: '0.9rem',
-                backgroundColor: '#ff6b6b',
-                color: 'white',
-                border: 'none',
-                borderRadius: '8px',
-                cursor: 'pointer'
-              }}
-            >
-              Sign Out
-            </button>
+            <span>👤 {profile.profile?.personal_info?.display_name || 'User'}</span>
+            <span>🎯 {profile.profile?.therapeutic_goals?.[0] || 'General Growth'}</span>
           </div>
         )}
 
@@ -1239,13 +656,11 @@ const VASAInterface = () => {
             gap: '8px'
           }}>
             <span>VASA is thinking...</span>
-            <span 
-              style={{
-                fontFamily: 'monospace',
-                fontSize: '24px',
-                animation: 'thendCycle 2.5s infinite steps(1)'
-              }}
-            >
+            <span style={{
+              fontFamily: 'monospace',
+              fontSize: '24px',
+              animation: 'thendCycle 2.5s infinite steps(1)'
+            }}>
               ⊙
             </span>
           </div>
@@ -1303,7 +718,6 @@ const VASAInterface = () => {
           50% { opacity: 1; }
           100% { opacity: 0.5; }
         }
-
       `}</style>
 
     </div>
