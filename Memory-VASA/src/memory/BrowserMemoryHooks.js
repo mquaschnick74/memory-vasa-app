@@ -219,6 +219,44 @@ class BrowserMemoryHooks {
     }
   }
 
+  // Get user profile (missing method that was being called)
+  async getUserProfile(userUUID) {
+    try {
+      const userRef = doc(this.db, 'users', userUUID);
+      const userSnap = await getDoc(userRef);
+      
+      if (userSnap.exists()) {
+        const userData = userSnap.data();
+        console.log(`✅ User profile loaded for: ${userUUID}`);
+        return {
+          success: true,
+          profile: userData,
+          exists: true,
+          setup_completed: userData.profile?.setup_completed || false
+        };
+      } else {
+        console.log(`ℹ️ No user profile found for: ${userUUID}`);
+        return {
+          success: false,
+          profile: null,
+          exists: false,
+          setup_completed: false,
+          requires_profile_creation: true
+        };
+      }
+    } catch (error) {
+      console.error('❌ Failed to get user profile:', error);
+      return {
+        success: false,
+        profile: null,
+        exists: false,
+        setup_completed: false,
+        requires_profile_creation: true,
+        error: error.message
+      };
+    }
+  }
+
   // Create new user with CSS structure (only when explicitly requested)
   async createNewUser(userUUID, profileData = {}) {
     try {
@@ -577,6 +615,7 @@ class BrowserMemoryHooks {
 
 // React hooks for using BrowserMemoryHooks in components
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { updateDoc, serverTimestamp } from 'firebase/firestore';
 
 // Global instance for browser memory management
 let globalMemoryManager = null;
@@ -731,17 +770,54 @@ export function useUserProfile(userUUID) {
   const memoryManager = useMemo(() => getBrowserMemoryManager(), []);
 
   const loadProfile = useCallback(async () => {
-    if (!userUUID) return;
+    if (!userUUID) {
+      setLoading(false);
+      return;
+    }
     
     try {
       setLoading(true);
-      const status = await memoryManager.getUserSetupStatus(userUUID);
-      setSetupStatus(status);
-      setProfile(status.user_data);
+      
+      // Use getUserProfile method instead of getUserSetupStatus
+      const profileResult = await memoryManager.getUserProfile(userUUID);
+      
+      if (profileResult.success && profileResult.exists) {
+        setProfile(profileResult.profile);
+        setSetupStatus({
+          profile_exists: true,
+          setup_completed: profileResult.setup_completed,
+          current_stage: profileResult.profile.current_stage,
+          requires_profile_creation: false,
+          requires_setup_completion: !profileResult.setup_completed,
+          user_data: profileResult.profile
+        });
+      } else {
+        // No profile exists
+        setProfile(null);
+        setSetupStatus({
+          profile_exists: false,
+          setup_completed: false,
+          current_stage: null,
+          requires_profile_creation: true,
+          requires_setup_completion: false,
+          user_data: null
+        });
+      }
+      
       setError(null);
     } catch (err) {
       console.error('Failed to load profile:', err);
       setError(err.message);
+      // Set default "no profile" state on error
+      setProfile(null);
+      setSetupStatus({
+        profile_exists: false,
+        setup_completed: false,
+        current_stage: null,
+        requires_profile_creation: true,
+        requires_setup_completion: false,
+        user_data: null
+      });
     } finally {
       setLoading(false);
     }
@@ -768,14 +844,19 @@ export function useUserProfile(userUUID) {
     if (!userUUID) return { success: false, error: 'No user UUID' };
     
     try {
-      // Update profile logic would go here
+      const userRef = doc(memoryManager.db, 'users', userUUID);
+      await updateDoc(userRef, {
+        ...updates,
+        last_active: serverTimestamp()
+      });
+      
       await loadProfile(); // Reload to get updated profile
       return { success: true };
     } catch (err) {
       console.error('Failed to update profile:', err);
       return { success: false, error: err.message };
     }
-  }, [userUUID, loadProfile]);
+  }, [userUUID, memoryManager, loadProfile]);
 
   useEffect(() => {
     loadProfile();
@@ -789,8 +870,9 @@ export function useUserProfile(userUUID) {
     createProfile,
     updateProfile,
     reloadProfile: loadProfile,
-    requiresProfile: setupStatus?.requires_profile_creation,
-    requiresSetup: setupStatus?.requires_setup_completion
+    requiresProfile: setupStatus?.requires_profile_creation || false,
+    requiresSetup: setupStatus?.requires_setup_completion || false,
+    profileExists: setupStatus?.profile_exists || false
   };
 }
 
