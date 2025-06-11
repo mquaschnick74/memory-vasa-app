@@ -1,264 +1,197 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useConversation } from '@elevenlabs/react';
+import AudioVisualizer from './AudioVisualizer';
 
-// Real-time Audio Visualizer Component
-const AudioVisualizer = ({ 
-  isActive = false, 
-  isSpeaking = false,
-  barCount = 60 
-}) => {
-  const containerRef = useRef(null);
-  const animationRef = useRef(null);
-  const audioContextRef = useRef(null);
-  const analyserRef = useRef(null);
-  const microphoneRef = useRef(null);
-  const dataArrayRef = useRef(null);
+// BROWSER-ONLY MEMORY HOOKS (no server dependencies)
+import { useConversationMemory, useStageMemory, useUserProfile, useConversationContext, getBrowserMemoryManager } from './memory/BrowserMemoryHooks.js';
 
-  const colors = [
-    '#ef4444', // red
-    '#f97316', // orange  
-    '#eab308', // yellow
-    '#22c55e', // green
-    '#06b6d4', // teal
-    '#3b82f6', // blue
-    '#6366f1', // indigo
-    '#a855f7', // purple
-    '#ec4899'  // pink
-  ];
-
-  const generateBars = () => {
-    if (!containerRef.current) return;
-    const container = containerRef.current;
-    container.innerHTML = '';
-
-    for (let i = 0; i < barCount; i++) {
-      const bar = document.createElement('div');
-      bar.style.width = '4px';
-      bar.style.backgroundColor = colors[i % colors.length];
-      bar.style.transition = 'height 0.05s ease';
-      bar.style.borderRadius = '2px';
-      bar.className = 'visualizer-bar';
-      bar.style.height = '8px';
-
-      container.appendChild(bar);
-    }
-  };
-
-  // Initialize audio context and microphone
-  const initializeAudio = async () => {
-    try {
-      // Create audio context
-      audioContextRef.current = new (window.AudioContext || window.webkitAudioContext)();
-
-      // Get microphone stream
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        audio: {
-          echoCancellation: false,
-          noiseSuppression: false,
-          autoGainControl: false
-        } 
-      });
-
-      // Create microphone source
-      microphoneRef.current = audioContextRef.current.createMediaStreamSource(stream);
-
-      // Create analyser
-      analyserRef.current = audioContextRef.current.createAnalyser();
-      analyserRef.current.fftSize = 256;
-      analyserRef.current.smoothingTimeConstant = 0.8;
-
-      // Connect microphone to analyser
-      microphoneRef.current.connect(analyserRef.current);
-
-      // Create data array for frequency data
-      const bufferLength = analyserRef.current.frequencyBinCount;
-      dataArrayRef.current = new Uint8Array(bufferLength);
-
-      console.log('Audio initialized successfully');
-    } catch (error) {
-      console.error('Failed to initialize audio:', error);
-    }
-  };
-
-  const animateBars = () => {
-    if (!containerRef.current) return;
-
-    const bars = containerRef.current.querySelectorAll('.visualizer-bar');
-
-    if (isActive && analyserRef.current && dataArrayRef.current) {
-      // Get real audio frequency data
-      analyserRef.current.getByteFrequencyData(dataArrayRef.current);
-
-      bars.forEach((bar, index) => {
-        // Map bar index to frequency data
-        const dataIndex = Math.floor((index / barCount) * dataArrayRef.current.length);
-        const audioValue = dataArrayRef.current[dataIndex] || 0;
-
-        // Convert audio value to height (0-255 -> 8-120px)
-        const height = Math.max(8, (audioValue / 255) * 120 + 8);
-        bar.style.height = `${height}px`;
-      });
-    } else {
-      // Gentle idle animation when not active
-      bars.forEach((bar, index) => {
-        const height = Math.random() * 12 + 6;
-        bar.style.height = `${height}px`;
-      });
-    }
-
-    animationRef.current = requestAnimationFrame(animateBars);
-  };
-
-  const stopAnimation = () => {
-    if (animationRef.current) {
-      cancelAnimationFrame(animationRef.current);
-    }
-
-    if (containerRef.current) {
-      const bars = containerRef.current.querySelectorAll('.visualizer-bar');
-      bars.forEach(bar => {
-        bar.style.height = '8px';
-      });
-    }
-  };
-
-  const cleanup = () => {
-    if (animationRef.current) {
-      cancelAnimationFrame(animationRef.current);
-    }
-
-    if (microphoneRef.current) {
-      microphoneRef.current.disconnect();
-    }
-
-    if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
-      audioContextRef.current.close();
-    }
-  };
-
-  useEffect(() => {
-    generateBars();
-
-    // Initialize audio when component mounts
-    initializeAudio();
-
-    return cleanup;
-  }, []);
-
-  // Request microphone permission when component mounts
-  useEffect(() => {
-    const requestInitialMicPermission = async () => {
-      try {
-        await navigator.mediaDevices.getUserMedia({ audio: true });
-        console.log('Microphone permission granted on page load');
-      } catch (error) {
-        console.log('Microphone permission not granted on page load - will request later');
-      }
-    };
-
-    requestInitialMicPermission();
-  }, []);
-
-  useEffect(() => {
-    if (isActive) {
-      // Resume audio context if suspended
-      if (audioContextRef.current && audioContextRef.current.state === 'suspended') {
-        audioContextRef.current.resume();
-      }
-      animateBars();
-    } else {
-      stopAnimation();
-    }
-
-    return () => {
-      if (animationRef.current) {
-        cancelAnimationFrame(animationRef.current);
-      }
-    };
-  }, [isActive]);
-
-  // Idle animation when not active
-  useEffect(() => {
-    if (!isActive) {
-      const idleAnimation = setInterval(() => {
-        if (!containerRef.current) return;
-
-        const bars = containerRef.current.querySelectorAll('.visualizer-bar');
-        bars.forEach((bar) => {
-          const height = Math.random() * 12 + 6;
-          bar.style.height = `${height}px`;
-        });
-      }, 2000);
-
-      return () => clearInterval(idleAnimation);
-    }
-  }, [isActive]);
-
-  return (
-    <div style={{
-      display: 'flex',
-      alignItems: 'end',
-      justifyContent: 'center',
-      height: '128px',
-      width: '100%',
-      maxWidth: '1024px',
-      padding: '0 32px'
-    }}>
-      <div 
-        ref={containerRef} 
-        style={{
-          display: 'flex',
-          alignItems: 'end',
-          gap: '2px'
-        }}
-      />
-    </div>
-  );
-};
-
-// Main VASA Component
+// Main VASA Component (Auth logic removed - handled by App.jsx ProfileGuard)
 const VASAInterface = () => {
-  const [agentId] = useState('nJeN1YQZyK0aTu2SoJnM'); // Hardcoded agent ID
+  // Get userUUID from localStorage (set by ProfileGuard in App.jsx)
+  const [userUUID] = useState(() => localStorage.getItem('userUUID'));
+  const [currentStage, setCurrentStage] = useState('⊙');
+  const [stageHistory, setStageHistory] = useState([]);
   const [micPermission, setMicPermission] = useState(false);
+  const [agentId] = useState('nJeN1YQZyK0aTu2SoJnM'); // Hardcoded agent ID
   const [buttonState, setButtonState] = useState('resting'); // resting, connecting, connected, thinking
+  const [termsAccepted, setTermsAccepted] = useState(false);
+  const [showTermsModal, setShowTermsModal] = useState(false);
 
-  // Add custom styles to override any existing CSS
-  const customStyles = {
-    container: {
-      backgroundColor: '#b23cfc',
-      color: '#ffffff',
-      display: 'flex',
-      flexDirection: 'column',
-      fontFamily: 'system-ui, -apple-system, sans-serif'
+  // CSS Stage tracking
+  const [isThinking, setIsThinking] = useState(false);
+  const [isVASASpeaking, setIsVASASpeaking] = useState(false);
+  const [sessionMemory, setSessionMemory] = useState([]); // Store conversation memory
+
+  // Memory system hooks
+  const { 
+    conversations,
+    storeConversation, 
+    loading: memoryLoading 
+  } = useConversationMemory(userUUID);
+
+  const { 
+    updateStageProgression 
+  } = useStageMemory(userUUID);
+
+  const { 
+    profile 
+  } = useUserProfile(userUUID);
+
+  const {
+    context
+  } = useConversationContext(userUUID);
+
+  // CSS Stage detection function
+  const detectStage = (response) => {
+    let detectedStage = currentStage; // Default to current stage
+
+    // Stage detection based on VASA's response keywords
+    if (/contradiction|CVDC|hold.*tension|suspend|between/i.test(response)) {
+      detectedStage = '_'; // Suspension - Hold Liminality
+    } else if (/integration|CYVC|completion|whole|unified|resolved/i.test(response)) {
+      detectedStage = '2'; // Completion - Articulate CYVC
+    } else if (/begin|fragment|reveal|origin|start|initial/i.test(response)) {
+      detectedStage = '⊙'; // Pointed Origin - Reveal Fragmentation
+    } else if (/gesture|movement|toward|direction|shift|change/i.test(response)) {
+      detectedStage = '1'; // Gesture Toward - Facilitate Thend
+    } else if (/terminal|loop|end|cycle|closure|recursive/i.test(response)) {
+      detectedStage = '⊘'; // Terminal Symbol - Recursion or Closure
+    } else if (/focus|bind|attention|concentrate|present/i.test(response)) {
+      detectedStage = '•'; // Focus/Bind - Introduce CVDC
+    }
+
+    return detectedStage;
+  };
+
+  // Inject conversation context when connecting to VASA
+  const injectConversationContext = async () => {
+    try {
+      if (!userUUID) return;
+
+      const contextData = await getBrowserMemoryManager().getConversationContext(userUUID, 10);
+      if (contextData && contextData.summary) {
+        console.log('🧠 Injecting conversation context:', contextData.summary);
+
+        // Create a more natural context injection that VASA should respond to
+        const contextMessage = `Hi VASA, we've spoken before. ${contextData.summary} I'd like to continue our symbolic work from where we left off.`;
+
+        // Send context as the first user message immediately after connection
+        setTimeout(async () => {
+          if (conversation.sendMessage) {
+            console.log('📤 Sending context message to VASA:', contextMessage);
+            await conversation.sendMessage(contextMessage);
+          }
+        }, 500);
+      } else {
+        // If no context, send a natural first message
+        setTimeout(async () => {
+          if (conversation.sendMessage) {
+            console.log('📤 Sending initial greeting to VASA');
+            await conversation.sendMessage(`Hello VASA, I'm ${profile?.profile?.personal_info?.display_name || 'ready'} to begin our symbolic work together.`);
+          }
+        }, 500);
+      }
+    } catch (error) {
+      console.error('Failed to inject conversation context:', error);
+    }
+  };
+
+  // Update stage history when stage changes
+  const updateStageHistory = async (newStage) => {
+    if (newStage !== currentStage) {
+      const transitionData = {
+        stage: newStage,
+        timestamp: new Date().toISOString(),
+        fromStage: currentStage
+      };
+
+      setStageHistory(prev => [...prev, transitionData]);
+      setCurrentStage(newStage);
+
+      // Store in persistent memory
+      if (userUUID) {
+        await updateStageProgression(currentStage, transitionData);
+      }
+
+      console.log(`🔄 Stage transition: ${currentStage} → ${newStage}`);
     }
   };
 
   const conversation = useConversation({
-    onConnect: () => {
+    onConnect: async () => {
       console.log('Connected to VASA');
       setButtonState('connected');
+
+      // Inject conversation history context when connecting
+      await injectConversationContext();
     },
     onDisconnect: () => {
       console.log('Disconnected from VASA');
       setButtonState('resting');
+      setIsVASASpeaking(false);
     },
     onMessage: (message) => {
       console.log('Message:', message);
-      // You can add logic here to detect when AI is thinking/processing
+
       if (message.type === 'agent_response_start') {
         setButtonState('thinking');
+        setIsThinking(true);
+        setIsVASASpeaking(true);
       } else if (message.type === 'agent_response_end') {
         setButtonState('connected');
+        setIsThinking(false);
+        setIsVASASpeaking(false);
+      }
+
+      // Handle both user and assistant messages
+      if (message.message && typeof message.message === 'string') {
+        const messageType = message.source === 'user' ? 'user' : 'assistant';
+        const detectedStage = messageType === 'assistant' ? detectStage(message.message) : currentStage;
+
+        if (messageType === 'assistant') {
+          updateStageHistory(detectedStage);
+        }
+
+        // Store conversation in memory
+        const conversationEntry = {
+          type: messageType,
+          content: message.message,
+          stage: detectedStage,
+          timestamp: new Date().toISOString(),
+          message_type: message.type || 'message',
+          userUUID: userUUID
+        };
+
+        setSessionMemory(prev => [...prev, conversationEntry]);
+
+        // Store in persistent memory with better error handling
+        if (userUUID) {
+          console.log('💾 Storing conversation:', conversationEntry);
+          storeConversation(conversationEntry).catch(error => {
+            console.warn('Failed to store conversation in backend:', error);
+          });
+        }
+
+        console.log('💬 Conversation message stored locally');
       }
     },
     onError: (error) => {
       console.error('Error:', error);
       setButtonState('resting');
+      setIsThinking(false);
+      setIsVASASpeaking(false);
     }
   });
 
-  // Check mic permission status on component mount
+  // Check terms acceptance and mic permission status on component mount
   useEffect(() => {
+    const checkTermsAcceptance = () => {
+      const termsAcceptedStored = localStorage.getItem('terms_accepted');
+      if (termsAcceptedStored === 'true') {
+        setTermsAccepted(true);
+      }
+    };
+
     const checkMicPermission = async () => {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -270,8 +203,35 @@ const VASAInterface = () => {
       }
     };
 
+    // Load saved stage data
+    const loadSavedStageData = () => {
+      const savedStage = localStorage.getItem('currentStage');
+      const savedHistory = localStorage.getItem('stageHistory');
+
+      if (savedStage) {
+        setCurrentStage(savedStage);
+      }
+
+      if (savedHistory) {
+        try {
+          const history = JSON.parse(savedHistory);
+          setStageHistory(history);
+        } catch (error) {
+          console.error('Failed to load stage history:', error);
+        }
+      }
+    };
+
+    checkTermsAcceptance();
     checkMicPermission();
+    loadSavedStageData();
   }, []);
+
+  // Save stage data when it changes
+  useEffect(() => {
+    localStorage.setItem('currentStage', currentStage);
+    localStorage.setItem('stageHistory', JSON.stringify(stageHistory));
+  }, [currentStage, stageHistory]);
 
   // Request microphone permission
   const requestMicPermission = async () => {
@@ -286,8 +246,40 @@ const VASAInterface = () => {
     }
   };
 
+  // Handle terms acceptance
+  const handleAcceptTerms = async () => {
+    localStorage.setItem('terms_accepted', 'true');
+    setTermsAccepted(true);
+    setShowTermsModal(false);
+
+    // After accepting terms, proceed with starting session
+    if (!micPermission) {
+      const granted = await requestMicPermission();
+      if (!granted) return;
+    }
+
+    setButtonState('connecting');
+
+    try {
+      await conversation.startSession({ agentId: agentId });
+    } catch (error) {
+      console.error('Failed to connect:', error);
+      setButtonState('resting');
+      alert('Failed to connect. Please try again.');
+    }
+  };
+
+  const handleDeclineTerms = () => {
+    setShowTermsModal(false);
+    // Don't set termsAccepted to true, keeping the user from accessing VASA
+  };
+
   // Handle main button click
   const handleMainButtonClick = async () => {
+    if (!termsAccepted) {
+      setShowTermsModal(true);
+      return;
+    }
     if (buttonState === 'resting') {
       if (!micPermission) {
         const granted = await requestMicPermission();
@@ -339,12 +331,66 @@ const VASAInterface = () => {
     }
   };
 
+  // Helper function to get stage descriptions
+  const getStageDescription = (stage) => {
+    const descriptions = {
+      '⊙': 'Pointed Origin — Reveal',
+      '•': 'Focus/Bind — Introduce CVDC', 
+      '_': 'Suspension — Hold Liminality',
+      '1': 'Gesture Toward — Facilitate Thend',
+      '2': 'Completion — Articulate CYVC',
+      '⊘': 'Terminal Symbol — Recursion or Closure'
+    };
+    return descriptions[stage] || 'Unknown Stage';
+  };
+
   const buttonConfig = getButtonConfig();
 
+  // Show error if no userUUID (should not happen with ProfileGuard)
+  if (!userUUID) {
+    return (
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        height: '100vh',
+        backgroundColor: '#b23cfc',
+        color: '#ffffff',
+        fontFamily: 'system-ui, -apple-system, sans-serif'
+      }}>
+        <p>Authentication required. Please refresh the page.</p>
+      </div>
+    );
+  }
+
+  // Styles for main interface
+  const styles = {
+    container: {
+      backgroundColor: '#b23cfc',
+      color: '#ffffff',
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
+      justifyContent: 'flex-start',
+      height: '100vh',
+      padding: '20px',
+      fontFamily: 'system-ui, -apple-system, sans-serif'
+    },
+    header: {
+      width: '100%',
+      textAlign: 'center',
+      marginBottom: '20px'
+    },
+    title: {
+      fontSize: '2rem',
+      fontWeight: 'bold'
+    }
+  };
+
   return (
-    <div style={customStyles.container} className="bg-black text-white flex flex-col">
+    <div style={styles.container} className="bg-black text-white flex flex-col">
       {/* Global CSS Reset */}
-      <style jsx global>{`
+      <style>{`
         html, body {
           margin: 0;
           padding: 0;
@@ -355,19 +401,170 @@ const VASAInterface = () => {
           box-sizing: border-box;
         }
       `}</style>
+
+      {/* Terms and Conditions Modal */}
+      {showTermsModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0, 0, 0, 0.8)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000,
+          padding: '20px'
+        }}>
+          <div style={{
+            backgroundColor: '#ffffff',
+            color: '#000000',
+            padding: '32px',
+            borderRadius: '12px',
+            maxWidth: '600px',
+            width: '100%',
+            maxHeight: '80vh',
+            overflow: 'auto'
+          }}>
+            <h2 style={{
+              fontSize: '24px',
+              fontWeight: 'bold',
+              marginBottom: '20px',
+              color: '#1f2937'
+            }}>
+              Terms and Conditions
+            </h2>
+
+            <div style={{
+              fontSize: '16px',
+              lineHeight: '1.6',
+              marginBottom: '24px',
+              color: '#374151'
+            }}>
+              <p>
+                By clicking <strong>"Agree,"</strong> and each time I interact with this AI agent, I consent to the recording, storage, and sharing of my communications with third-party service providers, and as described in the Privacy Policy.
+              </p>
+              <p style={{ marginTop: '16px' }}>
+                If you do not wish to have your conversations recorded, please refrain from using this service.
+              </p>
+            </div>
+
+            <div style={{
+              display: 'flex',
+              gap: '12px',
+              justifyContent: 'flex-end'
+            }}>
+              <button
+                onClick={handleDeclineTerms}
+                style={{
+                  padding: '12px 24px',
+                  backgroundColor: '#6b7280',
+                  color: '#ffffff',
+                  border: 'none',
+                  borderRadius: '6px',
+                  fontSize: '16px',
+                  cursor: 'pointer',
+                  transition: 'background-color 0.2s'
+                }}
+                onMouseOver={(e) => e.target.style.backgroundColor = '#4b5563'}
+                onMouseOut={(e) => e.target.style.backgroundColor = '#6b7280'}
+              >
+                Decline
+              </button>
+              <button
+                onClick={handleAcceptTerms}
+                style={{
+                  padding: '12px 24px',
+                  backgroundColor: '#b23cfc',
+                  color: '#ffffff',
+                  border: 'none',
+                  borderRadius: '6px',
+                  fontSize: '16px',
+                  cursor: 'pointer',
+                  transition: 'background-color 0.2s'
+                }}
+                onMouseOver={(e) => e.target.style.backgroundColor = '#9333ea'}
+                onMouseOut={(e) => e.target.style.backgroundColor = '#b23cfc'}
+              >
+                Agree
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Main Interface */}
-      <div 
-          style={{
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'flex-start',
-            paddingTop: '10px',
-            paddingLeft: '20px',
-            paddingRight: '20px',
-            paddingBottom: '10px'
-          }}
-        >
+      <div style={styles.header}>
+        <h1 style={styles.title}>VASA Memory Interface</h1>
+      </div>
+
+      <div style={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'flex-start',
+        paddingTop: '10px',
+        paddingLeft: '20px',
+        paddingRight: '20px',
+        paddingBottom: '10px'
+      }}>
+
+        {/* Core Symbol Set Display */}
+        <div style={{
+          marginBottom: '32px',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          gap: '20px',
+          fontSize: '48px',
+          fontFamily: 'monospace'
+        }}>
+          {['⊙', '•', '_', '1', '2', '⊘'].map((symbol, index) => (
+            <span
+              key={symbol}
+              style={{
+                opacity: currentStage === symbol ? 1 : 0.3,
+                transform: currentStage === symbol ? 'scale(1.2)' : 'scale(1)',
+                transition: 'all 0.3s ease',
+                color: currentStage === symbol ? '#ffffff' : '#ffffff80',
+                textShadow: currentStage === symbol ? '0 0 10px #ffffff' : 'none',
+                cursor: 'default',
+                userSelect: 'none'
+              }}
+              title={getStageDescription(symbol)}
+            >
+              {symbol}
+            </span>
+          ))}
+        </div>
+
+        {/* Stage Description */}
+        <div style={{
+          marginBottom: '1px',
+          fontSize: '14px',
+          color: '#ffffff80',
+          textAlign: 'center',
+          minHeight: '20px'
+        }}>
+          {getStageDescription(currentStage)}
+        </div>
+
+        {/* Audio Visualizer - positioned above main button */}
+        <div style={{ 
+          marginTop: '1px',
+          marginBottom: '24px',
+          display: 'flex',
+          justifyContent: 'center',
+          width: '100%'
+        }}>
+          <AudioVisualizer 
+            isActive={conversation.status === 'connected'} 
+            isSpeaking={conversation.isSpeaking && !isVASASpeaking}
+            isVASASpeaking={isVASASpeaking}
+          />
+        </div>
+
         {/* Main Button */}
         <button
           onClick={handleMainButtonClick}
@@ -401,63 +598,128 @@ const VASAInterface = () => {
         </button>
 
         {/* Status Indicators */}
-        <div 
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '24px',
-            marginTop: '24px'
-          }}
-        >
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '24px',
+          marginTop: '24px'
+        }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <div 
-              style={{
-                width: '12px',
-                height: '12px',
-                borderRadius: '50%',
-                backgroundColor: conversation.status === 'connected' ? '#10b981' : '#ef4444'
-              }}
-            ></div>
+            <div style={{
+              width: '12px',
+              height: '12px',
+              borderRadius: '50%',
+              backgroundColor: conversation.status === 'connected' ? '#10b981' : '#ef4444'
+            }}></div>
             <span style={{ fontSize: '14px', color: '#9ca3af' }}>
               {conversation.status === 'connected' ? 'Connected' : 'Disconnected'}
             </span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <div 
-              style={{
-                width: '12px',
-                height: '12px',
-                borderRadius: '50%',
-                backgroundColor: micPermission ? '#10b981' : '#6b7280'
-              }}
-            ></div>
+            <div style={{
+              width: '12px',
+              height: '12px',
+              borderRadius: '50%',
+              backgroundColor: micPermission ? '#10b981' : '#6b7280'
+            }}></div>
             <span style={{ fontSize: '14px', color: '#9ca3af' }}>
               {micPermission ? 'Ready' : 'Mic Access Needed'}
             </span>
           </div>
         </div>
 
-        {/* Audio Visualizer - positioned just below status indicators */}
-        <div style={{ 
-          marginTop: '1px',
-          display: 'flex',
-          justifyContent: 'center',
-          width: '100%'
-        }}>
-          <AudioVisualizer 
-            isActive={conversation.status === 'connected'} 
-            isSpeaking={conversation.isSpeaking || buttonState === 'thinking'}
-          />
-        </div>
+        {/* User Info Section - Show profile info instead of auth controls */}
+        {profile && (
+          <div style={{
+            marginTop: '16px',
+            fontSize: '0.9rem',
+            color: '#ffffff80',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '15px'
+          }}>
+            <span>👤 {profile.profile?.personal_info?.display_name || 'User'}</span>
+            <span>🎯 {profile.profile?.therapeutic_goals?.[0] || 'General Growth'}</span>
+          </div>
+        )}
+
+        {/* Thinking Indicator with Cycling Animation */}
+        {isThinking && (
+          <div style={{
+            marginTop: '16px',
+            fontSize: '18px',
+            color: '#ffffff',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '8px'
+          }}>
+            <span>VASA is thinking...</span>
+            <span style={{
+              fontFamily: 'monospace',
+              fontSize: '24px',
+              animation: 'thendCycle 2.5s infinite steps(1)'
+            }}>
+              ⊙
+            </span>
+          </div>
+        )}
+
+        {/* Stage History (Debug) */}
+        {stageHistory.length > 0 && (
+          <details style={{
+            marginTop: '24px',
+            fontSize: '12px',
+            color: '#ffffff60',
+            textAlign: 'left',
+            maxWidth: '400px'
+          }}>
+            <summary style={{ cursor: 'pointer', marginBottom: '8px' }}>
+              Stage History ({stageHistory.length} transitions)
+            </summary>
+            <div style={{
+              maxHeight: '200px',
+              overflowY: 'auto',
+              padding: '8px',
+              backgroundColor: 'rgba(0,0,0,0.2)',
+              borderRadius: '4px'
+            }}>
+              {stageHistory.slice(-10).map((entry, idx) => (
+                <div key={idx} style={{ marginBottom: '4px' }}>
+                  {entry.fromStage} → {entry.stage} ({new Date(entry.timestamp).toLocaleTimeString()})
+                </div>
+              ))}
+            </div>
+          </details>
+        )}
+
       </div>
 
-      {/* Add CSS for pulse animation */}
-      <style jsx>{`
+      {/* Add CSS for pulse animation and CSS cycling */}
+      <style>{`
         @keyframes pulse {
           0%, 100% { opacity: 1; }
           50% { opacity: .5; }
         }
+
+        @keyframes thendCycle {
+          0%   { content: "⊙"; }
+          16%  { content: "•"; }
+          32%  { content: "_"; }
+          48%  { content: "1"; }
+          64%  { content: "2"; }
+          80%  { content: "⊘"; }
+          100% { content: "⊙"; }
+        }
+
+        @keyframes thinkingPulse {
+          0% { opacity: 0.5; }
+          50% { opacity: 1; }
+          100% { opacity: 0.5; }
+        }
       `}</style>
+
     </div>
   );
 };
