@@ -22,6 +22,9 @@ const VASAInterface = () => {
   const [isVASASpeaking, setIsVASASpeaking] = useState(false);
   const [sessionMemory, setSessionMemory] = useState([]); // Store conversation memory
 
+  // Logout state
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+
   // Memory system hooks
   const { 
     conversations,
@@ -61,6 +64,51 @@ const VASAInterface = () => {
     }
 
     return detectedStage;
+  };
+
+  // Logout function
+  const handleLogout = async () => {
+    setIsLoggingOut(true);
+    
+    try {
+      console.log('🔍 Starting logout process...');
+      
+      // End any active conversation first
+      if (conversation.status === 'connected') {
+        console.log('🔍 Ending active VASA conversation...');
+        await conversation.endSession();
+        setButtonState('resting');
+        setIsVASASpeaking(false);
+        setIsThinking(false);
+      }
+
+      // Import and use the auth service to sign out
+      console.log('🔍 Signing out from Firebase...');
+      const { default: BrowserAuthService } = await import('./services/BrowserAuthService.js');
+      const auth = new BrowserAuthService();
+      await auth.signOut();
+
+      // Clear all localStorage data
+      console.log('🔍 Clearing localStorage data...');
+      localStorage.removeItem('userUUID');
+      localStorage.removeItem('terms_accepted');
+      localStorage.removeItem('currentStage');
+      localStorage.removeItem('stageHistory');
+      
+      // Clear any other app-specific data you might have stored
+      // Add more localStorage.removeItem() calls here if you have other data to clear
+
+      console.log('✅ Logout completed successfully');
+      
+      // Refresh the page to return to login screen
+      window.location.reload();
+      
+    } catch (error) {
+      console.error('🚨 Logout failed:', error);
+      alert('Logout failed. Please try again.');
+    } finally {
+      setIsLoggingOut(false);
+    }
   };
 
   // Inject conversation context when connecting to VASA
@@ -226,6 +274,126 @@ const VASAInterface = () => {
     checkMicPermission();
     loadSavedStageData();
   }, []);
+
+  // Auto-logout when user navigates away, closes page, or switches tabs for extended time
+  useEffect(() => {
+    let tabHiddenTime = null;
+    let logoutTimer = null;
+
+    // Function to perform logout cleanup
+    const performLogoutCleanup = async () => {
+      try {
+        console.log('🔍 Performing auto-logout cleanup...');
+
+        // End any active conversation
+        if (conversation.status === 'connected') {
+          await conversation.endSession();
+        }
+
+        // Sign out from Firebase
+        const { default: BrowserAuthService } = await import('./services/BrowserAuthService.js');
+        const auth = new BrowserAuthService();
+        await auth.signOut();
+
+        // Clear localStorage
+        localStorage.removeItem('userUUID');
+        localStorage.removeItem('terms_accepted');
+        localStorage.removeItem('currentStage');
+        localStorage.removeItem('stageHistory');
+
+        console.log('✅ Auto-logout completed');
+      } catch (error) {
+        console.error('🚨 Auto-logout cleanup failed:', error);
+        // Still clear localStorage even if Firebase signout fails
+        localStorage.removeItem('userUUID');
+        localStorage.removeItem('terms_accepted');
+        localStorage.removeItem('currentStage');
+        localStorage.removeItem('stageHistory');
+      }
+    };
+
+    // Handle page unload (when user closes tab/window or navigates away)
+    const handleBeforeUnload = (event) => {
+      console.log('🔍 Page unloading - performing logout...');
+      
+      // Synchronous cleanup for immediate page unload
+      localStorage.removeItem('userUUID');
+      localStorage.removeItem('terms_accepted');
+      localStorage.removeItem('currentStage');
+      localStorage.removeItem('stageHistory');
+
+      // Try to sign out (may not complete if page closes quickly)
+      performLogoutCleanup().catch(console.error);
+    };
+
+    // Handle visibility change (when user switches tabs)
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        // Tab became hidden - start timer
+        tabHiddenTime = Date.now();
+        console.log('🔍 Tab hidden - starting auto-logout timer (5 minutes)');
+        
+        // Set timeout for 5 minutes of inactivity
+        logoutTimer = setTimeout(() => {
+          console.log('🔍 Tab hidden for 5 minutes - performing auto-logout');
+          performLogoutCleanup().then(() => {
+            // Reload page to show login screen when user returns
+            window.location.reload();
+          });
+        }, 5 * 60 * 1000); // 5 minutes
+      } else {
+        // Tab became visible - cancel timer if it hasn't been too long
+        if (logoutTimer) {
+          clearTimeout(logoutTimer);
+          logoutTimer = null;
+        }
+        
+        if (tabHiddenTime) {
+          const hiddenDuration = Date.now() - tabHiddenTime;
+          console.log(`🔍 Tab visible again after ${Math.round(hiddenDuration / 1000)} seconds`);
+          
+          // If hidden for more than 5 minutes, logout anyway
+          if (hiddenDuration > 5 * 60 * 1000) {
+            console.log('🔍 Tab was hidden for more than 5 minutes - performing logout');
+            performLogoutCleanup().then(() => {
+              window.location.reload();
+            });
+          }
+          
+          tabHiddenTime = null;
+        }
+      }
+    };
+
+    // Handle page focus loss (additional safety net)
+    const handleWindowBlur = () => {
+      console.log('🔍 Window lost focus');
+      // Don't logout immediately on blur, just log it
+    };
+
+    const handleWindowFocus = () => {
+      console.log('🔍 Window gained focus');
+      // Check if we should still be logged in
+    };
+
+    // Add event listeners
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('blur', handleWindowBlur);
+    window.addEventListener('focus', handleWindowFocus);
+
+    // Cleanup function
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('blur', handleWindowBlur);
+      window.removeEventListener('focus', handleWindowFocus);
+      
+      if (logoutTimer) {
+        clearTimeout(logoutTimer);
+      }
+    };
+  }, [conversation]);
 
   // Save stage data when it changes
   useEffect(() => {
@@ -496,7 +664,47 @@ const VASAInterface = () => {
 
       {/* Main Interface */}
       <div style={styles.header}>
-        <h1 style={styles.title}>VASA Memory Interface</h1>
+        <div style={{ 
+          display: 'flex', 
+          justifyContent: 'space-between', 
+          alignItems: 'center',
+          width: '100%'
+        }}>
+          <div></div> {/* Empty div for spacing */}
+          <h1 style={styles.title}>VASA Memory Interface</h1>
+          
+          {/* Logout Button */}
+          <button
+            onClick={handleLogout}
+            disabled={isLoggingOut}
+            style={{
+              padding: '8px 16px',
+              backgroundColor: 'transparent',
+              color: '#ff6b6b',
+              border: '2px solid #ff6b6b',
+              borderRadius: '20px',
+              fontSize: '14px',
+              cursor: isLoggingOut ? 'not-allowed' : 'pointer',
+              transition: 'all 0.3s ease',
+              fontWeight: 'bold',
+              opacity: isLoggingOut ? 0.6 : 1
+            }}
+            onMouseOver={(e) => {
+              if (!isLoggingOut) {
+                e.target.style.backgroundColor = '#ff6b6b';
+                e.target.style.color = '#ffffff';
+              }
+            }}
+            onMouseOut={(e) => {
+              if (!isLoggingOut) {
+                e.target.style.backgroundColor = 'transparent';
+                e.target.style.color = '#ff6b6b';
+              }
+            }}
+          >
+            {isLoggingOut ? 'Logging Out...' : 'Logout'}
+          </button>
+        </div>
       </div>
 
       <div style={{
@@ -568,7 +776,7 @@ const VASAInterface = () => {
         {/* Main Button */}
         <button
           onClick={handleMainButtonClick}
-          disabled={buttonConfig.disabled}
+          disabled={buttonConfig.disabled || isLoggingOut}
           style={{
             padding: '20px 40px',
             borderRadius: '50px',
@@ -576,17 +784,18 @@ const VASAInterface = () => {
             fontWeight: 'bold',
             letterSpacing: '0.05em',
             border: 'none',
-            cursor: buttonConfig.disabled ? 'not-allowed' : 'pointer',
+            cursor: (buttonConfig.disabled || isLoggingOut) ? 'not-allowed' : 'pointer',
             transition: 'all 0.3s ease',
             backgroundColor: 
               buttonState === 'connecting' ? '#fbbf24' :
               buttonState === 'connected' ? '#10b981' :
               buttonState === 'thinking' ? '#3b82f6' : '#ffffff',
             color: buttonState === 'resting' ? '#b23cfc' : '#ffffff',
-            animation: (buttonState === 'connecting' || buttonState === 'thinking') ? 'pulse 2s infinite' : 'none'
+            animation: (buttonState === 'connecting' || buttonState === 'thinking') ? 'pulse 2s infinite' : 'none',
+            opacity: isLoggingOut ? 0.6 : 1
           }}
           onMouseOver={(e) => {
-            if (!buttonConfig.disabled) {
+            if (!buttonConfig.disabled && !isLoggingOut) {
               e.target.style.transform = 'scale(1.05)';
             }
           }}
@@ -643,6 +852,21 @@ const VASAInterface = () => {
             <span>🎯 {profile.profile?.therapeutic_goals?.[0] || 'General Growth'}</span>
           </div>
         )}
+
+        {/* Security Notice */}
+        <div style={{
+          marginTop: '12px',
+          fontSize: '0.75rem',
+          color: '#ffffff40',
+          textAlign: 'center',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: '8px'
+        }}>
+          <span>🔒</span>
+          <span>You'll be automatically logged out when closing this page or after 5 minutes of inactivity</span>
+        </div>
 
         {/* Thinking Indicator with Cycling Animation */}
         {isThinking && (
