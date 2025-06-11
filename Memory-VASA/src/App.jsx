@@ -15,28 +15,78 @@ function LoginComponent({ onUserAuthenticated }) {
   useEffect(() => {
     const initAuthService = async () => {
       try {
+        console.log('🔍 LoginComponent: Initializing AuthService...');
         const { default: BrowserAuthService } = await import('./services/BrowserAuthService.js');
         const auth = new BrowserAuthService();
         setAuthService(auth);
 
-        // Listen for auth state changes
+        // 🔍 DEBUGGING: Expose auth globally and add detailed logging
+        window.debugAuth = auth;
+        console.log('🔍 Auth service initialized:', auth);
+        console.log('🔍 Current user on init:', auth.getCurrentUser());
+
+        // Test Firebase connection
+        const testFirebaseConnection = async () => {
+          try {
+            console.log('🔍 Testing Firebase connection...');
+            
+            // Import Firebase directly to test
+            const { auth: firebaseAuth } = await import('./firebase-config.js');
+            console.log('🔍 Firebase auth object:', firebaseAuth);
+            console.log('🔍 Firebase current user:', firebaseAuth.currentUser);
+            
+            // Test a simple Firebase operation
+            const { onAuthStateChanged } = await import('firebase/auth');
+            onAuthStateChanged(firebaseAuth, (user) => {
+              console.log('🔍 Firebase direct auth state:', user ? 'Signed in' : 'Signed out');
+              if (user) {
+                console.log('🔍 Firebase direct user details:', {
+                  uid: user.uid,
+                  email: user.email,
+                  emailVerified: user.emailVerified
+                });
+              }
+            });
+            
+          } catch (error) {
+            console.error('🚨 Firebase connection test failed:', error);
+          }
+        };
+
+        testFirebaseConnection();
+
+        // Listen for auth state changes with detailed logging
         auth.onAuthStateChanged(async (user) => {
+          console.log('🔍 BrowserAuthService auth state changed event fired');
+          console.log('🔍 User object from BrowserAuthService:', user);
+          
           if (user) {
+            console.log('🔍 User authenticated via BrowserAuthService:', {
+              uid: user.uid,
+              email: user.email,
+              emailVerified: user.emailVerified,
+              metadata: user.metadata
+            });
+            
             localStorage.setItem('userUUID', user.uid);
+            console.log('🔍 Stored userUUID in localStorage:', user.uid);
             setIsEmailVerified(user.emailVerified);
             
             if (user.emailVerified) {
-              console.log('✅ User authenticated:', user.uid);
+              console.log('✅ User authenticated and verified, calling onUserAuthenticated:', user.uid);
               onUserAuthenticated(user.uid);
             } else {
+              console.log('⚠️ User authenticated but email not verified');
               setAuthStep('verify_email');
             }
           } else {
+            console.log('🔍 User signed out via BrowserAuthService');
             localStorage.removeItem('userUUID');
+            console.log('🔍 Removed userUUID from localStorage');
           }
         });
       } catch (error) {
-        console.error('Failed to initialize AuthService:', error);
+        console.error('🚨 Failed to initialize AuthService:', error);
       }
     };
 
@@ -45,6 +95,7 @@ function LoginComponent({ onUserAuthenticated }) {
 
   // Handle user registration with email
   const handleRegister = async () => {
+    console.log('🔍 handleRegister called');
     if (!email.trim() || !password.trim() || !symbolicName.trim()) {
       alert('Please fill in all fields');
       return;
@@ -56,21 +107,26 @@ function LoginComponent({ onUserAuthenticated }) {
     }
 
     try {
+      console.log('🔍 Attempting to create user with email:', email);
       const user = await authService.createUserWithEmail(email, password);
+      console.log('🔍 User created successfully:', user.uid);
       
       // Send email verification
+      console.log('🔍 Sending email verification...');
       await authService.sendEmailVerification();
+      console.log('🔍 Email verification sent');
       
       setAuthStep('verify_email');
       alert('Account created! Please check your email and click the verification link.');
     } catch (error) {
-      console.error('Registration failed:', error);
+      console.error('🚨 Registration failed:', error);
       alert('Registration failed: ' + error.message);
     }
   };
 
   // Handle user login with email
   const handleLogin = async () => {
+    console.log('🔍 handleLogin called');
     if (!email.trim() || !password.trim()) {
       alert('Please enter email and password');
       return;
@@ -82,27 +138,33 @@ function LoginComponent({ onUserAuthenticated }) {
     }
 
     try {
+      console.log('🔍 Attempting to sign in with email:', email);
       const user = await authService.signInWithEmail(email, password);
+      console.log('🔍 Sign in successful:', user.uid, 'emailVerified:', user.emailVerified);
       
       if (user.emailVerified) {
-        console.log('✅ User signed in:', user.uid);
+        console.log('✅ User signed in with verified email:', user.uid);
         // onUserAuthenticated will be called by the auth state listener
       } else {
+        console.log('⚠️ User signed in but email not verified');
         setAuthStep('verify_email');
         alert('Please verify your email before continuing');
       }
     } catch (error) {
-      console.error('Login failed:', error);
+      console.error('🚨 Login failed:', error);
       alert('Login failed: ' + error.message);
     }
   };
 
   // Check email verification status
   const checkEmailVerification = async () => {
+    console.log('🔍 checkEmailVerification called');
     if (!authService) return;
 
     try {
+      console.log('🔍 Reloading user to check verification status...');
       const isVerified = await authService.reloadUser();
+      console.log('🔍 Email verification status:', isVerified);
       if (isVerified) {
         const currentUser = authService.getCurrentUser();
         setIsEmailVerified(true);
@@ -113,38 +175,59 @@ function LoginComponent({ onUserAuthenticated }) {
         alert('Email not yet verified. Please check your email.');
       }
     } catch (error) {
-      console.error('Verification check failed:', error);
+      console.error('🚨 Verification check failed:', error);
       alert('Failed to check verification status');
     }
   };
 
   // Resend verification email
   const resendVerificationEmail = async () => {
+    console.log('🔍 resendVerificationEmail called');
     if (!authService) return;
 
     try {
       await authService.sendEmailVerification();
+      console.log('🔍 Verification email resent');
       alert('Verification email sent! Please check your inbox.');
     } catch (error) {
-      console.error('Failed to resend verification:', error);
+      console.error('🚨 Failed to resend verification:', error);
       alert('Failed to send verification email');
     }
   };
 
   // Sign out
   const handleSignOut = async () => {
+    console.log('🔍 handleSignOut called');
     if (!authService) return;
 
     try {
       await authService.signOut();
+      console.log('🔍 Sign out successful');
       setEmail('');
       setPassword('');
       setSymbolicName('');
       setIsEmailVerified(false);
       setAuthStep('login');
       localStorage.removeItem('userUUID');
+      console.log('🔍 Cleared form and localStorage');
     } catch (error) {
-      console.error('Sign out failed:', error);
+      console.error('🚨 Sign out failed:', error);
+    }
+  };
+
+  // 🔍 DEBUGGING: Add test anonymous sign-in button
+  const testAnonymousSignIn = async () => {
+    try {
+      console.log('🔍 Testing anonymous sign-in...');
+      const { auth } = await import('./firebase-config.js');
+      const { signInAnonymously } = await import('firebase/auth');
+      const result = await signInAnonymously(auth);
+      console.log('✅ Anonymous sign-in successful:', result.user.uid);
+      localStorage.setItem('userUUID', result.user.uid);
+      onUserAuthenticated(result.user.uid);
+    } catch (error) {
+      console.error('🚨 Anonymous sign-in failed:', error);
+      alert('Anonymous sign-in failed: ' + error.message);
     }
   };
 
@@ -178,6 +261,23 @@ function LoginComponent({ onUserAuthenticated }) {
         }}>
           VASA
         </h1>
+
+        {/* 🔍 DEBUG: Add test button */}
+        <button
+          onClick={testAnonymousSignIn}
+          style={{
+            padding: '10px 20px',
+            backgroundColor: '#ff9500',
+            color: 'white',
+            border: 'none',
+            borderRadius: '10px',
+            cursor: 'pointer',
+            marginBottom: '20px',
+            fontSize: '0.9rem'
+          }}
+        >
+          🔍 Test Anonymous Sign-In
+        </button>
 
         {authStep === 'login' && (
           <>
@@ -422,6 +522,8 @@ function LoginComponent({ onUserAuthenticated }) {
 
 // Profile Guard Component
 function ProfileGuard({ userUUID, children }) {
+  console.log('🔍 ProfileGuard rendered with userUUID:', userUUID);
+  
   const { 
     profile, 
     setupStatus, 
@@ -443,8 +545,10 @@ function ProfileGuard({ userUUID, children }) {
 
   // Check profile status and determine what to show
   useEffect(() => {
+    console.log('🔍 ProfileGuard useEffect - loading:', loading, 'requiresProfile:', requiresProfile, 'setupStatus:', setupStatus);
+    
     if (!loading) {
-      console.log('Profile check:', { requiresProfile, setupStatus });
+      console.log('🔍 Profile check complete:', { requiresProfile, setupStatus });
       
       if (requiresProfile || !setupStatus?.profile_exists) {
         console.log('🚫 Profile required - blocking VASA access');
@@ -459,6 +563,7 @@ function ProfileGuard({ userUUID, children }) {
   // Handle profile form submission
   async function handleProfileSubmit(e) {
     e.preventDefault();
+    console.log('🔍 handleProfileSubmit called with data:', profileFormData);
     
     if (!profileFormData.display_name.trim()) {
       alert('Please enter your display name');
@@ -472,20 +577,21 @@ function ProfileGuard({ userUUID, children }) {
 
     try {
       setCreatingProfile(true);
-      console.log('Creating therapeutic profile with data:', profileFormData);
+      console.log('🔍 Creating therapeutic profile with data:', profileFormData);
       
       const result = await createProfile(profileFormData);
+      console.log('🔍 Profile creation result:', result);
       
       if (result.success) {
         console.log('✅ Therapeutic profile created successfully');
         setShowProfileForm(false);
         // The useUserProfile hook will automatically reload and detect the new profile
       } else {
-        console.error('Profile creation failed:', result.error);
+        console.error('🚨 Profile creation failed:', result.error);
         alert(result.error || 'Failed to create profile. Please try again.');
       }
     } catch (error) {
-      console.error('Profile creation error:', error);
+      console.error('🚨 Profile creation error:', error);
       alert('Profile creation failed. Please try again.');
     } finally {
       setCreatingProfile(false);
@@ -494,6 +600,7 @@ function ProfileGuard({ userUUID, children }) {
 
   // Show loading while checking profile
   if (loading) {
+    console.log('🔍 ProfileGuard showing loading state');
     return (
       <div style={{
         display: 'flex',
@@ -528,6 +635,7 @@ function ProfileGuard({ userUUID, children }) {
 
   // Show error if profile check failed
   if (error) {
+    console.log('🔍 ProfileGuard showing error state:', error);
     return (
       <div style={{
         display: 'flex',
@@ -567,6 +675,7 @@ function ProfileGuard({ userUUID, children }) {
 
   // Show profile creation form if needed
   if (showProfileForm || requiresProfile) {
+    console.log('🔍 ProfileGuard showing profile form');
     return (
       <div style={{
         display: 'flex',
@@ -769,10 +878,12 @@ function ProfileGuard({ userUUID, children }) {
 
   // Profile exists and setup complete - show main app
   if (setupStatus?.profile_exists && setupStatus?.setup_completed) {
+    console.log('✅ ProfileGuard rendering VASA interface');
     return children;
   }
 
   // Fallback loading state
+  console.log('🔍 ProfileGuard showing fallback loading state');
   return (
     <div style={{
       display: 'flex',
@@ -794,12 +905,14 @@ function UserUUIDDetector({ children }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    console.log('🔍 UserUUIDDetector: Starting user detection...');
+    
     // Try to get userUUID from various sources
     const detectUserUUID = () => {
       // Method 1: From localStorage (your current auth)
       const storedUUID = localStorage.getItem('userUUID');
       if (storedUUID) {
-        console.log('Found userUUID in localStorage:', storedUUID);
+        console.log('🔍 Found userUUID in localStorage:', storedUUID);
         setUserUUID(storedUUID);
         setLoading(false);
         return;
@@ -808,19 +921,21 @@ function UserUUIDDetector({ children }) {
       // Method 2: Check if auth service has current user
       const checkAuthService = async () => {
         try {
+          console.log('🔍 Checking auth service for current user...');
           const { default: BrowserAuthService } = await import('./services/BrowserAuthService.js');
           const auth = new BrowserAuthService();
           const currentUser = auth.getCurrentUser();
           
           if (currentUser && currentUser.uid) {
-            console.log('Found userUUID from auth service:', currentUser.uid);
+            console.log('🔍 Found userUUID from auth service:', currentUser.uid);
             setUserUUID(currentUser.uid);
+            localStorage.setItem('userUUID', currentUser.uid);
           } else {
-            console.log('No authenticated user found');
+            console.log('🔍 No authenticated user found in auth service');
             setUserUUID(null);
           }
         } catch (error) {
-          console.error('Failed to check auth service:', error);
+          console.error('🚨 Failed to check auth service:', error);
           setUserUUID(null);
         } finally {
           setLoading(false);
@@ -835,6 +950,7 @@ function UserUUIDDetector({ children }) {
     // Listen for userUUID changes in localStorage
     const handleStorageChange = (e) => {
       if (e.key === 'userUUID') {
+        console.log('🔍 UserUUID changed in localStorage:', e.newValue);
         setUserUUID(e.newValue);
       }
     };
@@ -844,11 +960,12 @@ function UserUUIDDetector({ children }) {
   }, []);
 
   const handleUserAuthenticated = (authenticatedUserUUID) => {
-    console.log('🎉 User authenticated callback:', authenticatedUserUUID);
+    console.log('🎉 UserUUIDDetector: User authenticated callback:', authenticatedUserUUID);
     setUserUUID(authenticatedUserUUID);
   };
 
   if (loading) {
+    console.log('🔍 UserUUIDDetector showing loading state');
     return (
       <div style={{
         display: 'flex',
@@ -866,10 +983,12 @@ function UserUUIDDetector({ children }) {
 
   // If no userUUID, show login component
   if (!userUUID) {
+    console.log('🔍 UserUUIDDetector: No userUUID, showing LoginComponent');
     return <LoginComponent onUserAuthenticated={handleUserAuthenticated} />;
   }
 
   // If userUUID exists, wrap with profile guard
+  console.log('🔍 UserUUIDDetector: UserUUID exists, showing ProfileGuard with userUUID:', userUUID);
   return (
     <ProfileGuard userUUID={userUUID}>
       {children}
@@ -879,6 +998,7 @@ function UserUUIDDetector({ children }) {
 
 // Main App Component
 function App() {
+  console.log('🔍 App component rendered');
   return (
     <UserUUIDDetector>
       <VASAInterface />
