@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import VASAInterface from './VASAInterface';
+import VASAInterface from './VASAInterface'; // FIXED: Changed from './VoiceAgent'
 import { useUserProfile } from './memory/BrowserMemoryHooks.js';
 
 // Login Component for authentication (only)
@@ -215,22 +215,6 @@ function LoginComponent({ onUserAuthenticated }) {
     }
   };
 
-  // 🔍 DEBUGGING: Add test anonymous sign-in button
-  const testAnonymousSignIn = async () => {
-    try {
-      console.log('🔍 Testing anonymous sign-in...');
-      const { auth } = await import('./firebase-config.js');
-      const { signInAnonymously } = await import('firebase/auth');
-      const result = await signInAnonymously(auth);
-      console.log('✅ Anonymous sign-in successful:', result.user.uid);
-      localStorage.setItem('userUUID', result.user.uid);
-      onUserAuthenticated(result.user.uid);
-    } catch (error) {
-      console.error('🚨 Anonymous sign-in failed:', error);
-      alert('Anonymous sign-in failed: ' + error.message);
-    }
-  };
-
   return (
     <div style={{ 
       display: 'flex',
@@ -261,23 +245,6 @@ function LoginComponent({ onUserAuthenticated }) {
         }}>
           VASA
         </h1>
-
-        {/* 🔍 DEBUG: Add test button */}
-        <button
-          onClick={testAnonymousSignIn}
-          style={{
-            padding: '10px 20px',
-            backgroundColor: '#ff9500',
-            color: 'white',
-            border: 'none',
-            borderRadius: '10px',
-            cursor: 'pointer',
-            marginBottom: '20px',
-            fontSize: '0.9rem'
-          }}
-        >
-          🔍 Test Anonymous Sign-In
-        </button>
 
         {authStep === 'login' && (
           <>
