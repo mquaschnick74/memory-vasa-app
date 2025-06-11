@@ -5,6 +5,7 @@ import {
   setDoc,
   addDoc,
   getDoc,
+  getDocs, // ✅ Added missing import
   updateDoc,
   serverTimestamp 
 } from 'firebase/firestore';
@@ -148,6 +149,20 @@ class WebhookHandler {
       message_type: 'text',
       stage_focus: 'user_expression'
     });
+
+    // Detect user insights and breakthrough moments
+    const breakthrough = this.detectBreakthroughMoment(messageData.message);
+    const themes = this.detectTherapeuticThemes(messageData.message);
+    
+    if (breakthrough || themes.length > 0) {
+      await this.storeTherapeuticInsights(userUUID, {
+        breakthrough,
+        themes,
+        source_message: messageData.message,
+        conversation_id: messageData.conversation_id,
+        timestamp: messageData.timestamp
+      });
+    }
   }
 
   // Handle conversation start - FIXED to use CSS subcollections
@@ -173,6 +188,13 @@ class WebhookHandler {
       message_type: 'system',
       stage_focus: 'session_end'
     });
+
+    // Update user metrics for session completion
+    try {
+      await this.updateUserSessionMetrics(userUUID, endData.conversation_id);
+    } catch (error) {
+      console.error('❌ Failed to update session metrics:', error);
+    }
   }
 
   // FIXED: Store in users/{userUUID}/stage_progressions/ subcollection
@@ -217,7 +239,7 @@ class WebhookHandler {
           {
             message: contextData.message,
             sender: contextData.sender,
-            timestamp: new Date(contextData.timestamp),
+            timestamp: new Date(contextData.timestamp), // ✅ Use new Date() instead of serverTimestamp()
             message_type: contextData.message_type || 'text',
             stage_focus: contextData.stage_focus || 'general'
           }
@@ -258,7 +280,7 @@ class WebhookHandler {
           {
             message: `Therapeutic insight detected: ${insightData.breakthrough ? 'Breakthrough moment' : 'Thematic pattern'}`,
             sender: 'system',
-            timestamp: new Date(insightData.timestamp),
+            timestamp: new Date(insightData.timestamp), // ✅ Use new Date() for consistency
             message_type: 'insight',
             stage_focus: 'therapeutic_analysis'
           }
@@ -285,6 +307,28 @@ class WebhookHandler {
     } catch (error) {
       console.error('❌ Failed to store therapeutic insights:', error);
       throw error;
+    }
+  }
+
+  // Update user session metrics
+  async updateUserSessionMetrics(userUUID, conversationId) {
+    try {
+      const userRef = doc(this.db, 'users', userUUID);
+      const userSnap = await getDoc(userRef);
+      
+      if (userSnap.exists()) {
+        const currentMetrics = userSnap.data().metrics || {};
+        
+        await updateDoc(userRef, {
+          'metrics.total_sessions': (currentMetrics.total_sessions || 0) + 1,
+          'metrics.last_session': serverTimestamp(),
+          last_active: serverTimestamp()
+        });
+        
+        console.log(`✅ Session metrics updated for user: ${userUUID}`);
+      }
+    } catch (error) {
+      console.error('❌ Failed to update session metrics:', error);
     }
   }
 
@@ -363,6 +407,7 @@ class WebhookHandler {
       window.addEventListener('elevenlabs-webhook', (event) => {
         this.processWebhook(event.detail);
       });
+      console.log('✅ Webhook listener setup complete');
     }
   }
 
@@ -373,6 +418,7 @@ class WebhookHandler {
         detail: webhookData
       });
       window.dispatchEvent(event);
+      console.log('✅ Webhook event triggered:', webhookData.message_type);
     }
   }
 
@@ -387,7 +433,10 @@ class WebhookHandler {
       /now i get it/i,
       /aha|eureka/i,
       /finally understand/i,
-      /pieces coming together/i
+      /pieces coming together/i,
+      /light bulb moment/i,
+      /it all makes sense/i,
+      /clarity|clear now/i
     ];
 
     for (const indicator of breakthroughIndicators) {
@@ -398,7 +447,8 @@ class WebhookHandler {
           description: message.substring(0, 200),
           keywords: message.match(indicator)?.[0] || '',
           confidence: 0.8,
-          timestamp: new Date().toISOString()
+          timestamp: new Date().toISOString(),
+          css_stage_relevance: this.getBreakthroughStageRelevance(message)
         };
       }
     }
@@ -418,7 +468,9 @@ class WebhookHandler {
       'trauma': /trauma|painful|hurt|wound|healing|recovery/i,
       'growth': /growth|development|progress|journey|transformation/i,
       'awareness': /awareness|conscious|mindful|present|attention/i,
-      'emotional_regulation': /emotions|feelings|overwhelming|regulation|balance/i
+      'emotional_regulation': /emotions|feelings|overwhelming|regulation|balance/i,
+      'liminality': /in between|uncertain|liminal|threshold|transition/i,
+      'focus': /focus|concentration|attention|present moment|mindful/i
     };
 
     for (const [theme, pattern] of Object.entries(themePatterns)) {
@@ -440,24 +492,73 @@ class WebhookHandler {
   getThemeCSSRelevance(theme) {
     const themeToStage = {
       'fragmentation': 'pointed_origin',
+      'focus': 'focus_bind',
       'contradiction': 'focus_bind',
+      'liminality': 'suspension',
       'awareness': 'suspension',
       'integration': 'gesture_toward',
       'completion': 'completion',
-      'growth': 'terminal_symbol'
+      'growth': 'terminal_symbol',
+      'identity': 'terminal_symbol'
     };
     
     return themeToStage[theme] || 'general';
   }
 
-  // REMOVED: All the old methods that created wrong top-level collections
-  // - storeStageProgression (was creating top-level stage_progressions)
-  // - storeUserContext (was creating top-level user_contexts) 
-  // - storeSessionStageProgression (was creating session_stage_progressions)
-  // - storeBreakthroughMoment (was creating breakthrough_moments)
-  // - storeTherapeuticTheme (was creating therapeutic_themes)
-  
-  // Everything now goes into the proper CSS subcollection structure!
+  // Get breakthrough stage relevance
+  getBreakthroughStageRelevance(message) {
+    // Analyze message content to determine which CSS stage this breakthrough relates to
+    if (/fragment|pieces|pattern/i.test(message)) return 'pointed_origin';
+    if (/focus|attention|concentrate/i.test(message)) return 'focus_bind';
+    if (/tension|contradiction|between/i.test(message)) return 'suspension';
+    if (/direction|movement|toward/i.test(message)) return 'gesture_toward';
+    if (/integration|whole|complete/i.test(message)) return 'completion';
+    if (/journey|growth|reflection/i.test(message)) return 'terminal_symbol';
+    
+    return 'general';
+  }
+
+  // Get webhook statistics for monitoring
+  async getWebhookStats(userUUID) {
+    try {
+      const userContextRef = collection(this.db, 'users', userUUID, 'user_context');
+      const querySnapshot = await getDocs(userContextRef);
+      
+      let webhookCount = 0;
+      let insightCount = 0;
+      let lastWebhookTime = null;
+      
+      querySnapshot.forEach((doc) => {
+        const data = doc.data();
+        if (data.metadata?.source === 'elevenlabs_webhook') {
+          webhookCount++;
+          if (data.context_type === 'therapeutic_insight') {
+            insightCount++;
+          }
+          
+          const createdAt = data.created_at?.toDate() || new Date(data.created_at);
+          if (!lastWebhookTime || createdAt > lastWebhookTime) {
+            lastWebhookTime = createdAt;
+          }
+        }
+      });
+      
+      return {
+        total_webhook_messages: webhookCount,
+        therapeutic_insights: insightCount,
+        last_webhook_activity: lastWebhookTime,
+        webhook_active: lastWebhookTime && (new Date() - lastWebhookTime) < 24 * 60 * 60 * 1000 // Active within 24 hours
+      };
+    } catch (error) {
+      console.error('❌ Failed to get webhook stats:', error);
+      return {
+        total_webhook_messages: 0,
+        therapeutic_insights: 0,
+        last_webhook_activity: null,
+        webhook_active: false
+      };
+    }
+  }
 }
 
-export default WebhookHandler;
+export default WebhookHa
