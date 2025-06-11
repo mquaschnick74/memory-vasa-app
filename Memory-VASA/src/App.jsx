@@ -2,6 +2,9 @@ import React, { useState, useEffect } from 'react';
 import VASAInterface from './VASAInterface'; // FIXED: Changed from './VoiceAgent'
 import { useUserProfile } from './memory/BrowserMemoryHooks.js';
 
+// IMPORTANT: Import the singleton instance
+import { getBrowserAuthService } from './services/BrowserAuthService.js';
+
 // Login Component for authentication (only)
 function LoginComponent({ onUserAuthenticated }) {
   const [email, setEmail] = useState('');
@@ -10,14 +13,15 @@ function LoginComponent({ onUserAuthenticated }) {
   const [authStep, setAuthStep] = useState('login'); // 'login', 'register', 'verify_email'
   const [authService, setAuthService] = useState(null);
   const [isEmailVerified, setIsEmailVerified] = useState(false);
+  const [checkingVerification, setCheckingVerification] = useState(false);
 
-  // Initialize AuthService
+  // Initialize AuthService using singleton
   useEffect(() => {
     const initAuthService = async () => {
       try {
         console.log('🔍 LoginComponent: Initializing AuthService...');
-        const { default: BrowserAuthService } = await import('./services/BrowserAuthService.js');
-        const auth = new BrowserAuthService();
+        // FIXED: Use singleton instead of creating new instance
+        const auth = getBrowserAuthService();
         setAuthService(auth);
 
         // 🔍 DEBUGGING: Expose auth globally and add detailed logging
@@ -83,6 +87,8 @@ function LoginComponent({ onUserAuthenticated }) {
             console.log('🔍 User signed out via BrowserAuthService');
             localStorage.removeItem('userUUID');
             console.log('🔍 Removed userUUID from localStorage');
+            setIsEmailVerified(false);
+            setAuthStep('login');
           }
         });
       } catch (error) {
@@ -92,6 +98,47 @@ function LoginComponent({ onUserAuthenticated }) {
 
     initAuthService();
   }, [onUserAuthenticated]);
+
+  // NEW: Automatic verification checking
+  useEffect(() => {
+    if (authStep === 'verify_email' && authService && !checkingVerification) {
+      console.log('🔍 LoginComponent: Starting periodic verification check');
+      
+      const checkInterval = setInterval(async () => {
+        console.log('🔍 LoginComponent: Auto-checking verification status...');
+        setCheckingVerification(true);
+        
+        try {
+          const isVerified = await authService.reloadUser();
+          console.log('🔍 LoginComponent: Auto-check result:', isVerified);
+          
+          if (isVerified) {
+            console.log('✅ LoginComponent: Email verified during auto-check!');
+            clearInterval(checkInterval);
+            setCheckingVerification(false);
+            // Auth state listener will handle the transition
+          }
+        } catch (error) {
+          console.error('🚨 LoginComponent: Auto-check error:', error);
+        } finally {
+          setCheckingVerification(false);
+        }
+      }, 3000); // Check every 3 seconds
+
+      // Stop checking after 10 minutes
+      const stopTimeout = setTimeout(() => {
+        console.log('🔍 LoginComponent: Stopping auto-check after timeout');
+        clearInterval(checkInterval);
+        setCheckingVerification(false);
+      }, 600000); // 10 minutes
+
+      return () => {
+        clearInterval(checkInterval);
+        clearTimeout(stopTimeout);
+        setCheckingVerification(false);
+      };
+    }
+  }, [authStep, authService, checkingVerification]);
 
   // Handle user registration with email
   const handleRegister = async () => {
@@ -161,15 +208,17 @@ function LoginComponent({ onUserAuthenticated }) {
     console.log('🔍 checkEmailVerification called');
     if (!authService) return;
 
+    setCheckingVerification(true);
     try {
       console.log('🔍 Reloading user to check verification status...');
       const isVerified = await authService.reloadUser();
       console.log('🔍 Email verification status:', isVerified);
+      
       if (isVerified) {
         const currentUser = authService.getCurrentUser();
         setIsEmailVerified(true);
         console.log('✅ Email verified for:', currentUser.uid);
-        // onUserAuthenticated will be called by the auth state listener
+        // Auth state listener will handle the transition automatically
         alert('Email verified successfully! Welcome to VASA.');
       } else {
         alert('Email not yet verified. Please check your email.');
@@ -177,6 +226,8 @@ function LoginComponent({ onUserAuthenticated }) {
     } catch (error) {
       console.error('🚨 Verification check failed:', error);
       alert('Failed to check verification status');
+    } finally {
+      setCheckingVerification(false);
     }
   };
 
@@ -424,22 +475,32 @@ function LoginComponent({ onUserAuthenticated }) {
             <p style={{ fontSize: '1rem', marginBottom: '30px', opacity: 0.8 }}>
               Please check your email and click the verification link to continue.
             </p>
+            
+            {/* NEW: Show checking status */}
+            {checkingVerification && (
+              <p style={{ color: '#4CAF50', marginBottom: '20px' }}>
+                🔄 Checking verification status...
+              </p>
+            )}
+            
             <button
               onClick={checkEmailVerification}
+              disabled={checkingVerification}
               style={{
                 padding: '15px 30px',
                 fontSize: '1.1rem',
-                backgroundColor: '#4CAF50',
+                backgroundColor: checkingVerification ? '#6b7280' : '#4CAF50',
                 color: 'white',
                 border: 'none',
                 borderRadius: '10px',
-                cursor: 'pointer',
+                cursor: checkingVerification ? 'not-allowed' : 'pointer',
                 width: '100%',
                 fontWeight: 'bold',
-                marginBottom: '15px'
+                marginBottom: '15px',
+                opacity: checkingVerification ? 0.6 : 1
               }}
             >
-              I've Verified My Email
+              {checkingVerification ? 'Checking...' : "I've Verified My Email"}
             </button>
             <button
               onClick={resendVerificationEmail}
@@ -487,7 +548,7 @@ function LoginComponent({ onUserAuthenticated }) {
   );
 }
 
-// Profile Guard Component
+// Profile Guard Component (UNCHANGED - keeping your existing logic)
 function ProfileGuard({ userUUID, children }) {
   console.log('🔍 ProfileGuard rendered with userUUID:', userUUID);
   
@@ -866,7 +927,7 @@ function ProfileGuard({ userUUID, children }) {
   );
 }
 
-// User UUID Detector Component
+// User UUID Detector Component - UPDATED to use singleton
 function UserUUIDDetector({ children }) {
   const [userUUID, setUserUUID] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -885,12 +946,12 @@ function UserUUIDDetector({ children }) {
         return;
       }
 
-      // Method 2: Check if auth service has current user
+      // Method 2: Check if auth service has current user - FIXED to use singleton
       const checkAuthService = async () => {
         try {
           console.log('🔍 Checking auth service for current user...');
-          const { default: BrowserAuthService } = await import('./services/BrowserAuthService.js');
-          const auth = new BrowserAuthService();
+          // FIXED: Use singleton instead of creating new instance
+          const auth = getBrowserAuthService();
           const currentUser = auth.getCurrentUser();
           
           if (currentUser && currentUser.uid) {
@@ -963,7 +1024,7 @@ function UserUUIDDetector({ children }) {
   );
 }
 
-// Main App Component
+// Main App Component (UNCHANGED)
 function App() {
   console.log('🔍 App component rendered');
   return (
