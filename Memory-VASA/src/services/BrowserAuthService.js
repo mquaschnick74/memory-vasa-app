@@ -15,6 +15,7 @@ class BrowserAuthService {
     console.log('🔍 BrowserAuthService: Constructor called');
     this.auth = auth;
     this._authStateListeners = new Set();
+    this._isInitialized = false;
     console.log('🔍 BrowserAuthService: Auth object assigned:', this.auth);
     console.log('🔍 BrowserAuthService: Initial current user:', this.auth.currentUser);
     
@@ -22,36 +23,47 @@ class BrowserAuthService {
     this._setupAuthStateListener();
     
     // Expose for debugging
-    window.browserAuthService = this;
+    if (typeof window !== 'undefined') {
+      window.browserAuthService = this;
+    }
   }
 
   _setupAuthStateListener() {
     console.log('🔍 BrowserAuthService: Setting up main auth state listener');
-    onAuthStateChanged(this.auth, (user) => {
-      console.log('🔍 BrowserAuthService: Firebase auth state changed:', user ? `User ${user.uid}` : 'No user');
-      if (user) {
-        console.log('🔍 BrowserAuthService: User details:', {
-          uid: user.uid,
-          email: user.email,
-          emailVerified: user.emailVerified,
-          isAnonymous: user.isAnonymous
-        });
-      }
-      
-      // Notify all registered listeners
-      this._authStateListeners.forEach(callback => {
-        try {
-          callback(user);
-        } catch (error) {
-          console.error('🚨 Error in auth state listener:', error);
+    try {
+      onAuthStateChanged(this.auth, (user) => {
+        console.log('🔍 BrowserAuthService: Firebase auth state changed:', user ? `User ${user.uid}` : 'No user');
+        if (user) {
+          console.log('🔍 BrowserAuthService: User details:', {
+            uid: user.uid,
+            email: user.email,
+            emailVerified: user.emailVerified,
+            isAnonymous: user.isAnonymous
+          });
         }
+        
+        // Notify all registered listeners
+        this._authStateListeners.forEach(callback => {
+          try {
+            callback(user);
+          } catch (error) {
+            console.error('🚨 Error in auth state listener:', error);
+          }
+        });
+        
+        this._isInitialized = true;
       });
-    });
+    } catch (error) {
+      console.error('🚨 Error setting up auth state listener:', error);
+    }
   }
 
   async createUserWithEmail(email, password) {
     try {
       console.log('🔍 BrowserAuthService: createUserWithEmail called with email:', email);
+      if (!this.auth) {
+        throw new Error('Auth not initialized');
+      }
       const userCredential = await createUserWithEmailAndPassword(this.auth, email, password);
       console.log('🔍 BrowserAuthService: User created successfully:', userCredential.user.uid);
       return userCredential.user;
@@ -64,6 +76,9 @@ class BrowserAuthService {
   async signInWithEmail(email, password) {
     try {
       console.log('🔍 BrowserAuthService: signInWithEmail called with email:', email);
+      if (!this.auth) {
+        throw new Error('Auth not initialized');
+      }
       const userCredential = await signInWithEmailAndPassword(this.auth, email, password);
       console.log('🔍 BrowserAuthService: User signed in successfully:', userCredential.user.uid);
       return userCredential.user;
@@ -76,6 +91,9 @@ class BrowserAuthService {
   async signInAnonymously() {
     try {
       console.log('🔍 BrowserAuthService: signInAnonymously called');
+      if (!this.auth) {
+        throw new Error('Auth not initialized');
+      }
       const userCredential = await signInAnonymously(this.auth);
       console.log('🔍 BrowserAuthService: Anonymous sign-in successful:', userCredential.user.uid);
       return userCredential.user;
@@ -88,6 +106,9 @@ class BrowserAuthService {
   async sendEmailVerification() {
     try {
       console.log('🔍 BrowserAuthService: sendEmailVerification called');
+      if (!this.auth) {
+        throw new Error('Auth not initialized');
+      }
       const user = this.auth.currentUser;
       console.log('🔍 BrowserAuthService: Current user for verification:', user ? user.uid : 'null');
       
@@ -106,6 +127,9 @@ class BrowserAuthService {
   async signOut() {
     try {
       console.log('🔍 BrowserAuthService: signOut called');
+      if (!this.auth) {
+        throw new Error('Auth not initialized');
+      }
       const currentUser = this.auth.currentUser;
       console.log('🔍 BrowserAuthService: Signing out user:', currentUser ? currentUser.uid : 'null');
       
@@ -119,20 +143,41 @@ class BrowserAuthService {
   }
 
   isAuthenticated() {
-    const isAuth = !!this.auth.currentUser;
-    console.log('🔍 BrowserAuthService: isAuthenticated called, result:', isAuth);
-    return isAuth;
+    try {
+      if (!this.auth) {
+        console.log('🔍 BrowserAuthService: Auth not initialized, returning false');
+        return false;
+      }
+      const isAuth = !!this.auth.currentUser;
+      console.log('🔍 BrowserAuthService: isAuthenticated called, result:', isAuth);
+      return isAuth;
+    } catch (error) {
+      console.error('🚨 BrowserAuthService: Error in isAuthenticated:', error);
+      return false;
+    }
   }
 
   getCurrentUser() {
-    const user = this.auth.currentUser;
-    console.log('🔍 BrowserAuthService: getCurrentUser called, result:', user ? user.uid : 'null');
-    return user;
+    try {
+      if (!this.auth) {
+        console.log('🔍 BrowserAuthService: Auth not initialized, returning null');
+        return null;
+      }
+      const user = this.auth.currentUser;
+      console.log('🔍 BrowserAuthService: getCurrentUser called, result:', user ? user.uid : 'null');
+      return user;
+    } catch (error) {
+      console.error('🚨 BrowserAuthService: Error in getCurrentUser:', error);
+      return null;
+    }
   }
 
   async getIdToken() {
     try {
       console.log('🔍 BrowserAuthService: getIdToken called');
+      if (!this.auth) {
+        throw new Error('Auth not initialized');
+      }
       const user = this.auth.currentUser;
       console.log('🔍 BrowserAuthService: Current user for token:', user ? user.uid : 'null');
       
@@ -151,6 +196,9 @@ class BrowserAuthService {
   async reloadUser() {
     try {
       console.log('🔍 BrowserAuthService: reloadUser called');
+      if (!this.auth) {
+        throw new Error('Auth not initialized');
+      }
       const user = this.auth.currentUser;
       console.log('🔍 BrowserAuthService: Current user for reload:', user ? user.uid : 'null');
       
@@ -177,16 +225,20 @@ class BrowserAuthService {
     }
   }
 
-  // New method: Register auth state listeners
+  // Register auth state listeners
   onAuthStateChanged(callback) {
     console.log('🔍 BrowserAuthService: Adding auth state listener');
     this._authStateListeners.add(callback);
     
-    // Immediately call with current user state
-    const currentUser = this.auth.currentUser;
-    if (currentUser !== undefined) {
+    // Immediately call with current user state if initialized
+    if (this._isInitialized) {
+      const currentUser = this.getCurrentUser();
       console.log('🔍 BrowserAuthService: Immediately calling new listener with current user:', currentUser ? currentUser.uid : 'null');
-      callback(currentUser);
+      try {
+        callback(currentUser);
+      } catch (error) {
+        console.error('🚨 Error in immediate callback:', error);
+      }
     }
     
     // Return unsubscribe function
@@ -196,27 +248,31 @@ class BrowserAuthService {
     };
   }
 
-  // New method: Force refresh auth state
+  // Force refresh auth state
   async forceAuthStateRefresh() {
     console.log('🔍 BrowserAuthService: Forcing auth state refresh');
-    const currentUser = this.auth.currentUser;
-    
-    if (currentUser) {
-      await this.reloadUser();
-    }
-    
-    // Trigger all listeners with current state
-    this._authStateListeners.forEach(callback => {
-      try {
-        callback(currentUser);
-      } catch (error) {
-        console.error('🚨 Error in forced auth state refresh:', error);
+    try {
+      const currentUser = this.getCurrentUser();
+      
+      if (currentUser) {
+        await this.reloadUser();
       }
-    });
+      
+      // Trigger all listeners with current state
+      this._authStateListeners.forEach(callback => {
+        try {
+          callback(currentUser);
+        } catch (error) {
+          console.error('🚨 Error in forced auth state refresh:', error);
+        }
+      });
+    } catch (error) {
+      console.error('🚨 Error in forceAuthStateRefresh:', error);
+    }
   }
 }
 
-// Create singleton instance
+// Create and export singleton instance
 let instance = null;
 
 export const getBrowserAuthService = () => {
@@ -227,5 +283,9 @@ export const getBrowserAuthService = () => {
   return instance;
 };
 
+// Export the class itself for debugging
+export { BrowserAuthService };
+
 // Export singleton instance as default
-export default getBrowserAuthService();
+const authService = getBrowserAuthService();
+export default authService;
