@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import VASAInterface from './VoiceAgent';
+import VASAInterface from './VASAInterface';
 import { useUserProfile } from './memory/BrowserMemoryHooks.js';
 
 // Login Component for authentication (only)
