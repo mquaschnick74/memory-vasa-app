@@ -615,7 +615,6 @@ class BrowserMemoryHooks {
 
 // React hooks for using BrowserMemoryHooks in components
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { updateDoc, serverTimestamp } from 'firebase/firestore';
 
 // Global instance for browser memory management
 let globalMemoryManager = null;
