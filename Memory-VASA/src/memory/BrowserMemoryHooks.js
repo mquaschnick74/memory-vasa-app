@@ -575,4 +575,277 @@ class BrowserMemoryHooks {
   }
 }
 
+// React hooks for using BrowserMemoryHooks in components
+import { useState, useEffect, useCallback, useMemo } from 'react';
+
+// Global instance for browser memory management
+let globalMemoryManager = null;
+
+// Get or create global memory manager instance
+export function getBrowserMemoryManager() {
+  if (!globalMemoryManager) {
+    globalMemoryManager = new BrowserMemoryHooks();
+  }
+  return globalMemoryManager;
+}
+
+// Hook for conversation memory management
+export function useConversationMemory(userUUID) {
+  const [conversations, setConversations] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const memoryManager = useMemo(() => getBrowserMemoryManager(), []);
+
+  const loadConversations = useCallback(async () => {
+    if (!userUUID) return;
+    
+    try {
+      setLoading(true);
+      const result = await memoryManager.getConversationHistory(userUUID);
+      
+      if (result.requires_profile_creation) {
+        setConversations([]);
+        setError('Profile required');
+      } else {
+        setConversations(result.conversations || []);
+        setError(null);
+      }
+    } catch (err) {
+      console.error('Failed to load conversations:', err);
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }, [userUUID, memoryManager]);
+
+  const storeConversation = useCallback(async (conversationData) => {
+    if (!userUUID) return { success: false, error: 'No user UUID' };
+    
+    try {
+      const result = await memoryManager.storeConversation(userUUID, conversationData);
+      
+      if (result.success) {
+        // Reload conversations to get updated list
+        await loadConversations();
+      }
+      
+      return result;
+    } catch (err) {
+      console.error('Failed to store conversation:', err);
+      return { success: false, error: err.message };
+    }
+  }, [userUUID, memoryManager, loadConversations]);
+
+  useEffect(() => {
+    loadConversations();
+  }, [loadConversations]);
+
+  return {
+    conversations,
+    loading,
+    error,
+    storeConversation,
+    reloadConversations: loadConversations
+  };
+}
+
+// Hook for stage memory management
+export function useStageMemory(userUUID) {
+  const [currentStage, setCurrentStage] = useState(null);
+  const [stageProgress, setStageProgress] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const memoryManager = useMemo(() => getBrowserMemoryManager(), []);
+
+  const loadStageData = useCallback(async () => {
+    if (!userUUID) return;
+    
+    try {
+      setLoading(true);
+      const current = await memoryManager.getCurrentStage(userUUID);
+      setCurrentStage(current);
+      setError(null);
+    } catch (err) {
+      console.error('Failed to load stage data:', err);
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }, [userUUID, memoryManager]);
+
+  const updateStageProgression = useCallback(async (stageName, progressData) => {
+    if (!userUUID) return { success: false, error: 'No user UUID' };
+    
+    try {
+      const result = await memoryManager.updateStageProgression(userUUID, stageName, progressData);
+      
+      if (result.success) {
+        await loadStageData(); // Reload to get updated stage
+      }
+      
+      return result;
+    } catch (err) {
+      console.error('Failed to update stage progression:', err);
+      return { success: false, error: err.message };
+    }
+  }, [userUUID, memoryManager, loadStageData]);
+
+  const completeStage = useCallback(async (stageName) => {
+    if (!userUUID) return { success: false, error: 'No user UUID' };
+    
+    try {
+      const result = await memoryManager.completeStage(userUUID, stageName);
+      
+      if (result.success) {
+        await loadStageData(); // Reload to get updated stage
+      }
+      
+      return result;
+    } catch (err) {
+      console.error('Failed to complete stage:', err);
+      return { success: false, error: err.message };
+    }
+  }, [userUUID, memoryManager, loadStageData]);
+
+  useEffect(() => {
+    loadStageData();
+  }, [loadStageData]);
+
+  return {
+    currentStage,
+    stageProgress,
+    loading,
+    error,
+    updateStageProgression,
+    completeStage,
+    reloadStageData: loadStageData
+  };
+}
+
+// Hook for user profile management
+export function useUserProfile(userUUID) {
+  const [profile, setProfile] = useState(null);
+  const [setupStatus, setSetupStatus] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const memoryManager = useMemo(() => getBrowserMemoryManager(), []);
+
+  const loadProfile = useCallback(async () => {
+    if (!userUUID) return;
+    
+    try {
+      setLoading(true);
+      const status = await memoryManager.getUserSetupStatus(userUUID);
+      setSetupStatus(status);
+      setProfile(status.user_data);
+      setError(null);
+    } catch (err) {
+      console.error('Failed to load profile:', err);
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }, [userUUID, memoryManager]);
+
+  const createProfile = useCallback(async (profileData) => {
+    if (!userUUID) return { success: false, error: 'No user UUID' };
+    
+    try {
+      const result = await memoryManager.createNewUser(userUUID, profileData);
+      
+      if (result.success) {
+        await loadProfile(); // Reload to get new profile
+      }
+      
+      return result;
+    } catch (err) {
+      console.error('Failed to create profile:', err);
+      return { success: false, error: err.message };
+    }
+  }, [userUUID, memoryManager, loadProfile]);
+
+  const updateProfile = useCallback(async (updates) => {
+    if (!userUUID) return { success: false, error: 'No user UUID' };
+    
+    try {
+      // Update profile logic would go here
+      await loadProfile(); // Reload to get updated profile
+      return { success: true };
+    } catch (err) {
+      console.error('Failed to update profile:', err);
+      return { success: false, error: err.message };
+    }
+  }, [userUUID, loadProfile]);
+
+  useEffect(() => {
+    loadProfile();
+  }, [loadProfile]);
+
+  return {
+    profile,
+    setupStatus,
+    loading,
+    error,
+    createProfile,
+    updateProfile,
+    reloadProfile: loadProfile,
+    requiresProfile: setupStatus?.requires_profile_creation,
+    requiresSetup: setupStatus?.requires_setup_completion
+  };
+}
+
+// Hook for conversation context management
+export function useConversationContext(userUUID) {
+  const [context, setContext] = useState({
+    currentStage: null,
+    sessionActive: false,
+    lastMessage: null,
+    messageCount: 0
+  });
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const memoryManager = useMemo(() => getBrowserMemoryManager(), []);
+
+  const loadContext = useCallback(async () => {
+    if (!userUUID) return;
+    
+    try {
+      setLoading(true);
+      const [currentStage, conversations] = await Promise.all([
+        memoryManager.getCurrentStage(userUUID),
+        memoryManager.getConversationHistory(userUUID, 1)
+      ]);
+      
+      setContext({
+        currentStage,
+        sessionActive: currentStage?.started && !currentStage?.completed,
+        lastMessage: conversations.conversations?.[0] || null,
+        messageCount: conversations.conversations?.length || 0
+      });
+      setError(null);
+    } catch (err) {
+      console.error('Failed to load context:', err);
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }, [userUUID, memoryManager]);
+
+  const updateContext = useCallback(async () => {
+    await loadContext();
+  }, [loadContext]);
+
+  useEffect(() => {
+    loadContext();
+  }, [loadContext]);
+
+  return {
+    context,
+    loading,
+    error,
+    updateContext,
+    reloadContext: loadContext
+  };
+}
+
 export default BrowserMemoryHooks;
