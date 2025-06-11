@@ -2,7 +2,10 @@ import {
   getFirestore, 
   collection, 
   doc, 
-  setDoc, 
+  setDoc,
+  addDoc,
+  getDoc,
+  updateDoc,
   serverTimestamp 
 } from 'firebase/firestore';
 import app from '../firebase-config.js';
@@ -13,7 +16,7 @@ class WebhookHandler {
     this.webhookEndpoint = '/api/elevenlabs-webhook';
     this.db = getFirestore(app);
     
-    console.log('WebhookHandler initialized with Firebase Firestore');
+    console.log('WebhookHandler initialized with Core Symbol Set Firebase structure');
   }
 
   // Process incoming ElevenLabs webhook
@@ -28,6 +31,9 @@ class WebhookHandler {
         console.warn('No user UUID found in webhook data');
         return { success: false, error: 'Missing user identification' };
       }
+
+      // Ensure user exists with CSS structure
+      await this.ensureUserCSSStructure(userUUID);
 
       // Process different message types
       switch (message_type) {
@@ -74,221 +80,268 @@ class WebhookHandler {
     }
   }
 
-  // Handle agent responses
+  // Ensure user has proper CSS structure
+  async ensureUserCSSStructure(userUUID) {
+    try {
+      const userRef = doc(this.db, 'users', userUUID);
+      const userSnap = await getDoc(userRef);
+      
+      if (!userSnap.exists()) {
+        // Create user with CSS structure
+        await this.memoryManager.createNewUser(userUUID);
+        console.log(`✅ Created CSS structure for user: ${userUUID}`);
+      }
+    } catch (error) {
+      console.error('❌ Error ensuring CSS structure:', error);
+    }
+  }
+
+  // Handle agent responses - FIXED to use CSS subcollections
   async handleAgentResponse(userUUID, responseData) {
     const sessionId = responseData.conversation_id;
     
-    const conversationEntry = {
-      type: 'assistant',
-      content: responseData.message,
+    // Store in user_context subcollection (CSS structure)
+    await this.storeUserContext(userUUID, {
+      message: responseData.message,
+      sender: 'assistant',
       agent_id: responseData.agent_id,
       conversation_id: responseData.conversation_id,
-      sessionId: sessionId,
       timestamp: responseData.timestamp,
-      metadata: {
-        source: 'elevenlabs_webhook'
-      }
-    };
+      message_type: 'text',
+      stage_focus: 'webhook_response'
+    });
 
     // Detect CSS stage from agent response
     const detectedStage = this.detectStageFromResponse(responseData.message);
     if (detectedStage) {
-      conversationEntry.css_stage = detectedStage;
-
-      // Store stage progression in Firebase
-      await this.storeSessionStageProgression(userUUID, sessionId, {
-        stage: detectedStage,
+      // Update current stage progression
+      await this.updateStageProgression(userUUID, detectedStage, {
         trigger: 'agent_response',
         context: responseData.message.substring(0, 100),
         conversation_id: responseData.conversation_id
       });
     }
 
-    // Detect breakthrough moments
+    // Detect breakthrough moments and therapeutic themes
     const breakthrough = this.detectBreakthroughMoment(responseData.message);
-    if (breakthrough) {
-      await this.storeBreakthroughMoment(userUUID, sessionId, breakthrough);
-    }
-
-    // Detect therapeutic themes
     const themes = this.detectTherapeuticThemes(responseData.message);
-    if (themes.length > 0) {
-      for (const theme of themes) {
-        await this.storeTherapeuticTheme(userUUID, sessionId, theme);
-      }
+    
+    // Store insights in user_context with special tags
+    if (breakthrough || themes.length > 0) {
+      await this.storeTherapeuticInsights(userUUID, {
+        breakthrough,
+        themes,
+        source_message: responseData.message,
+        conversation_id: responseData.conversation_id,
+        timestamp: responseData.timestamp
+      });
     }
-
-    await this.memoryManager.storeConversation(userUUID, conversationEntry);
   }
 
-  // Handle user messages
+  // Handle user messages - FIXED to use CSS subcollections
   async handleUserMessage(userUUID, messageData) {
-    const conversationEntry = {
-      type: 'user',
-      content: messageData.message,
+    await this.storeUserContext(userUUID, {
+      message: messageData.message,
+      sender: 'user',
       conversation_id: messageData.conversation_id,
       timestamp: messageData.timestamp,
-      metadata: {
-        source: 'elevenlabs_webhook'
-      }
-    };
-
-    await this.memoryManager.storeConversation(userUUID, conversationEntry);
+      message_type: 'text',
+      stage_focus: 'user_expression'
+    });
   }
 
-  // Handle conversation start
+  // Handle conversation start - FIXED to use CSS subcollections
   async handleConversationStart(userUUID, startData) {
-    const conversationEntry = {
-      type: 'system',
-      content: 'Conversation started',
+    await this.storeUserContext(userUUID, {
+      message: 'Conversation started with Memory VASA',
+      sender: 'system',
       agent_id: startData.agent_id,
       conversation_id: startData.conversation_id,
       timestamp: startData.timestamp,
-      metadata: {
-        event: 'conversation_start',
-        source: 'elevenlabs_webhook'
-      }
-    };
-
-    await this.memoryManager.storeConversation(userUUID, conversationEntry);
+      message_type: 'system',
+      stage_focus: 'session_start'
+    });
   }
 
-  // Handle conversation end
+  // Handle conversation end - FIXED to use CSS subcollections
   async handleConversationEnd(userUUID, endData) {
-    const conversationEntry = {
-      type: 'system',
-      content: 'Conversation ended',
+    await this.storeUserContext(userUUID, {
+      message: 'Conversation ended',
+      sender: 'system',
       conversation_id: endData.conversation_id,
       timestamp: endData.timestamp,
-      metadata: {
-        event: 'conversation_end',
-        source: 'elevenlabs_webhook'
-      }
-    };
-
-    await this.memoryManager.storeConversation(userUUID, conversationEntry);
+      message_type: 'system',
+      stage_focus: 'session_end'
+    });
   }
 
-  // Store stage progression in Firebase
-  async storeStageProgression(userUUID, stageData) {
+  // FIXED: Store in users/{userUUID}/stage_progressions/ subcollection
+  async updateStageProgression(userUUID, detectedStage, progressData) {
     try {
-      const stageRef = doc(collection(this.db, 'stage_progressions'));
-      const stageEntry = {
-        userUUID,
-        timestamp: new Date().toISOString(),
-        createdAt: serverTimestamp(),
-        ...stageData
-      };
-
-      await setDoc(stageRef, stageEntry);
-      console.log('✅ Stage progression stored in Firebase via webhook:', stageRef.id);
-      return { success: true, id: stageRef.id };
+      // Get current stage
+      const currentStage = await this.getCurrentStage(userUUID);
+      
+      if (currentStage) {
+        const stageRef = doc(this.db, 'users', userUUID, 'stage_progressions', currentStage.id);
+        
+        // Update current stage with webhook data
+        await updateDoc(stageRef, {
+          integration_data: {
+            ...currentStage.integration_data,
+            webhook_insights: progressData,
+            detected_stage: detectedStage,
+            last_webhook_update: serverTimestamp()
+          },
+          updated_at: serverTimestamp()
+        });
+        
+        console.log(`✅ Stage progression updated via webhook for stage: ${currentStage.stage_name}`);
+      }
     } catch (error) {
-      console.error('❌ Failed to store stage progression via webhook:', error);
-      throw error;
+      console.error('❌ Failed to update stage progression via webhook:', error);
     }
   }
 
-  // Store user context in Firebase
+  // FIXED: Store in users/{userUUID}/user_context/ subcollection
   async storeUserContext(userUUID, contextData) {
     try {
-      const contextRef = doc(collection(this.db, 'user_contexts'));
+      const contextId = `webhook_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      
       const contextEntry = {
-        userUUID,
-        timestamp: new Date().toISOString(),
-        createdAt: serverTimestamp(),
-        ...contextData
+        context_id: contextId,
+        context_type: 'therapeutic_session',
+        current_stage: await this.getCurrentStageName(userUUID),
+        created_at: serverTimestamp(),
+        updated_at: serverTimestamp(),
+        conversation_thread: [
+          {
+            message: contextData.message,
+            sender: contextData.sender,
+            timestamp: new Date(contextData.timestamp),
+            message_type: contextData.message_type || 'text',
+            stage_focus: contextData.stage_focus || 'general'
+          }
+        ],
+        tags: ['webhook', 'elevenlabs', contextData.stage_focus],
+        priority: 3,
+        integration_insights: [],
+        metadata: {
+          source: 'elevenlabs_webhook',
+          agent_id: contextData.agent_id,
+          conversation_id: contextData.conversation_id
+        }
       };
 
+      const contextRef = doc(this.db, 'users', userUUID, 'user_context', contextId);
       await setDoc(contextRef, contextEntry);
-      console.log('✅ User context stored in Firebase via webhook:', contextRef.id);
-      return { success: true, id: contextRef.id };
+      
+      console.log(`✅ User context stored in CSS structure via webhook: ${contextId}`);
+      return { success: true, id: contextId };
     } catch (error) {
       console.error('❌ Failed to store user context via webhook:', error);
       throw error;
     }
   }
 
-  // Store session-specific stage progression in Firebase
-  async storeSessionStageProgression(userUUID, sessionId, stageData) {
+  // FIXED: Store insights in user_context with special tags
+  async storeTherapeuticInsights(userUUID, insightData) {
     try {
-      const sessionStageRef = doc(collection(this.db, 'session_stage_progressions'));
-      const stageEntry = {
-        userUUID,
-        sessionId,
-        timestamp: new Date().toISOString(),
-        createdAt: serverTimestamp(),
-        ...stageData
+      const contextId = `insight_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      
+      const insightEntry = {
+        context_id: contextId,
+        context_type: 'therapeutic_insight',
+        current_stage: await this.getCurrentStageName(userUUID),
+        created_at: serverTimestamp(),
+        updated_at: serverTimestamp(),
+        conversation_thread: [
+          {
+            message: `Therapeutic insight detected: ${insightData.breakthrough ? 'Breakthrough moment' : 'Thematic pattern'}`,
+            sender: 'system',
+            timestamp: new Date(insightData.timestamp),
+            message_type: 'insight',
+            stage_focus: 'therapeutic_analysis'
+          }
+        ],
+        tags: ['insight', 'therapeutic', 'webhook', 'analysis'],
+        priority: 4, // High priority for insights
+        integration_insights: [
+          ...(insightData.breakthrough ? [`Breakthrough: ${insightData.breakthrough.description}`] : []),
+          ...insightData.themes.map(theme => `Theme: ${theme.theme} - ${theme.evidence}`)
+        ],
+        therapeutic_data: {
+          breakthrough: insightData.breakthrough,
+          themes: insightData.themes,
+          source_message: insightData.source_message,
+          conversation_id: insightData.conversation_id
+        }
       };
 
-      await setDoc(sessionStageRef, stageEntry);
-      console.log('✅ Session stage progression stored in Firebase via webhook:', sessionStageRef.id);
-      return { success: true, id: sessionStageRef.id };
+      const contextRef = doc(this.db, 'users', userUUID, 'user_context', contextId);
+      await setDoc(contextRef, insightEntry);
+      
+      console.log(`✅ Therapeutic insights stored in CSS structure: ${contextId}`);
+      return { success: true, id: contextId };
     } catch (error) {
-      console.error('❌ Failed to store session stage progression via webhook:', error);
+      console.error('❌ Failed to store therapeutic insights:', error);
       throw error;
     }
   }
 
-  // Store breakthrough moment in Firebase
-  async storeBreakthroughMoment(userUUID, sessionId, breakthroughData) {
+  // Helper: Get current stage name
+  async getCurrentStageName(userUUID) {
     try {
-      const breakthroughRef = doc(collection(this.db, 'breakthrough_moments'));
-      const breakthroughEntry = {
-        userUUID,
-        sessionId,
-        timestamp: new Date().toISOString(),
-        createdAt: serverTimestamp(),
-        ...breakthroughData
-      };
-
-      await setDoc(breakthroughRef, breakthroughEntry);
-      console.log('✅ Breakthrough moment stored in Firebase via webhook:', breakthroughRef.id);
-      return { success: true, id: breakthroughRef.id };
+      const currentStage = await this.getCurrentStage(userUUID);
+      return currentStage?.stage_name || 'pointed_origin';
     } catch (error) {
-      console.error('❌ Failed to store breakthrough moment via webhook:', error);
-      throw error;
+      return 'pointed_origin';
     }
   }
 
-  // Store therapeutic theme in Firebase
-  async storeTherapeuticTheme(userUUID, sessionId, themeData) {
+  // Helper: Get current stage (simplified query to avoid index issues)
+  async getCurrentStage(userUUID) {
     try {
-      const themeRef = doc(collection(this.db, 'therapeutic_themes'));
-      const themeEntry = {
-        userUUID,
-        sessionId,
-        timestamp: new Date().toISOString(),
-        createdAt: serverTimestamp(),
-        ...themeData
-      };
-
-      await setDoc(themeRef, themeEntry);
-      console.log('✅ Therapeutic theme stored in Firebase via webhook:', themeRef.id);
-      return { success: true, id: themeRef.id };
+      // Get all stage progressions and find current one in memory
+      const stageProgressionsRef = collection(this.db, 'users', userUUID, 'stage_progressions');
+      const querySnapshot = await getDocs(stageProgressionsRef);
+      
+      const stages = [];
+      querySnapshot.forEach((doc) => {
+        stages.push({
+          id: doc.id,
+          ...doc.data()
+        });
+      });
+      
+      // Find first uncompleted stage, sorted by level
+      const currentStage = stages
+        .filter(stage => !stage.completed)
+        .sort((a, b) => a.stage_level - b.stage_level)[0];
+      
+      return currentStage || null;
     } catch (error) {
-      console.error('❌ Failed to store therapeutic theme via webhook:', error);
-      throw error;
+      console.error('❌ Error getting current stage in webhook:', error);
+      return null;
     }
   }
 
-  // Detect CSS stage from agent response
+  // FIXED: Detect CSS stage with correct symbols
   detectStageFromResponse(response) {
     if (!response || typeof response !== 'string') return null;
 
-    // Stage detection based on VASA's response keywords
+    // Stage detection based on VASA's response keywords with CORRECT CSS symbols
     if (/contradiction|CVDC|hold.*tension|suspend|between/i.test(response)) {
-      return '_'; // Suspension - Hold Liminality
+      return '_'; // Suspension - Navigating Liminality
     } else if (/integration|CYVC|completion|whole|unified|resolved/i.test(response)) {
-      return '2'; // Completion - Articulate CYVC
-    } else if (/begin|fragment|reveal|origin|start|initial/i.test(response)) {
-      return '⊙'; // Pointed Origin - Reveal Fragmentation
-    } else if (/gesture|movement|toward|direction|shift|change/i.test(response)) {
-      return '1'; // Gesture Toward - Facilitate Thend
-    } else if (/terminal|loop|end|cycle|closure|recursive/i.test(response)) {
-      return '⊘'; // Terminal Symbol - Recursion or Closure
+      return '2'; // Completion - Cultivating CYVC
+    } else if (/begin|fragment|reveal|origin|start|initial|fragmentation/i.test(response)) {
+      return 'Ⓞ'; // Pointed Origin - Revealing Fragmentation (CORRECT symbol)
+    } else if (/gesture|movement|toward|direction|shift|change|thend/i.test(response)) {
+      return '1'; // Gesture Toward - Facilitating Thend
+    } else if (/terminal|loop|end|cycle|closure|recursive|meta.*reflection/i.test(response)) {
+      return 'Ø'; // Terminal Symbol - Meta-reflection (CORRECT symbol)
     } else if (/focus|bind|attention|concentrate|present/i.test(response)) {
-      return '•'; // Focus/Bind - Introduce CVDC
+      return '•'; // Focus/Bind - Introducing CVDC
     }
 
     return null;
@@ -331,7 +384,10 @@ class WebhookHandler {
       /i never thought of it that way/i,
       /revelation|epiphany|breakthrough/i,
       /everything clicked/i,
-      /now i get it/i
+      /now i get it/i,
+      /aha|eureka/i,
+      /finally understand/i,
+      /pieces coming together/i
     ];
 
     for (const indicator of breakthroughIndicators) {
@@ -340,7 +396,9 @@ class WebhookHandler {
           type: 'insight',
           trigger: 'conversation',
           description: message.substring(0, 200),
-          keywords: message.match(indicator)?.[0] || ''
+          keywords: message.match(indicator)?.[0] || '',
+          confidence: 0.8,
+          timestamp: new Date().toISOString()
         };
       }
     }
@@ -351,14 +409,16 @@ class WebhookHandler {
   detectTherapeuticThemes(message) {
     const themes = [];
     const themePatterns = {
-      'contradiction': /contradiction|paradox|conflicting|opposing/i,
-      'completion': /completion|finished|whole|complete|resolved/i,
-      'fragmentation': /fragment|pieces|broken|scattered|disconnected/i,
-      'integration': /integration|bringing together|unifying|connecting/i,
-      'identity': /who am i|sense of self|identity|belonging/i,
-      'relationship': /relationship|connection|family|friends/i,
-      'trauma': /trauma|painful|hurt|wound|healing/i,
-      'growth': /growth|development|progress|journey/i
+      'contradiction': /contradiction|paradox|conflicting|opposing|tension/i,
+      'completion': /completion|finished|whole|complete|resolved|integration/i,
+      'fragmentation': /fragment|pieces|broken|scattered|disconnected|separate/i,
+      'integration': /integration|bringing together|unifying|connecting|synthesis/i,
+      'identity': /who am i|sense of self|identity|belonging|authentic/i,
+      'relationship': /relationship|connection|family|friends|intimate/i,
+      'trauma': /trauma|painful|hurt|wound|healing|recovery/i,
+      'growth': /growth|development|progress|journey|transformation/i,
+      'awareness': /awareness|conscious|mindful|present|attention/i,
+      'emotional_regulation': /emotions|feelings|overwhelming|regulation|balance/i
     };
 
     for (const [theme, pattern] of Object.entries(themePatterns)) {
@@ -367,13 +427,37 @@ class WebhookHandler {
           theme,
           evidence: message.substring(0, 150),
           confidence: 0.8, // Could be made more sophisticated
-          timestamp: new Date().toISOString()
+          timestamp: new Date().toISOString(),
+          css_relevance: this.getThemeCSSRelevance(theme)
         });
       }
     }
 
     return themes;
   }
+
+  // Map themes to CSS stages
+  getThemeCSSRelevance(theme) {
+    const themeToStage = {
+      'fragmentation': 'pointed_origin',
+      'contradiction': 'focus_bind',
+      'awareness': 'suspension',
+      'integration': 'gesture_toward',
+      'completion': 'completion',
+      'growth': 'terminal_symbol'
+    };
+    
+    return themeToStage[theme] || 'general';
+  }
+
+  // REMOVED: All the old methods that created wrong top-level collections
+  // - storeStageProgression (was creating top-level stage_progressions)
+  // - storeUserContext (was creating top-level user_contexts) 
+  // - storeSessionStageProgression (was creating session_stage_progressions)
+  // - storeBreakthroughMoment (was creating breakthrough_moments)
+  // - storeTherapeuticTheme (was creating therapeutic_themes)
+  
+  // Everything now goes into the proper CSS subcollection structure!
 }
 
 export default WebhookHandler;
