@@ -14,11 +14,39 @@ class BrowserAuthService {
   constructor() {
     console.log('🔍 BrowserAuthService: Constructor called');
     this.auth = auth;
+    this._authStateListeners = new Set();
     console.log('🔍 BrowserAuthService: Auth object assigned:', this.auth);
     console.log('🔍 BrowserAuthService: Initial current user:', this.auth.currentUser);
     
+    // Set up the main auth state listener once
+    this._setupAuthStateListener();
+    
     // Expose for debugging
     window.browserAuthService = this;
+  }
+
+  _setupAuthStateListener() {
+    console.log('🔍 BrowserAuthService: Setting up main auth state listener');
+    onAuthStateChanged(this.auth, (user) => {
+      console.log('🔍 BrowserAuthService: Firebase auth state changed:', user ? `User ${user.uid}` : 'No user');
+      if (user) {
+        console.log('🔍 BrowserAuthService: User details:', {
+          uid: user.uid,
+          email: user.email,
+          emailVerified: user.emailVerified,
+          isAnonymous: user.isAnonymous
+        });
+      }
+      
+      // Notify all registered listeners
+      this._authStateListeners.forEach(callback => {
+        try {
+          callback(user);
+        } catch (error) {
+          console.error('🚨 Error in auth state listener:', error);
+        }
+      });
+    });
   }
 
   async createUserWithEmail(email, password) {
@@ -129,6 +157,17 @@ class BrowserAuthService {
       if (user) {
         await reload(user);
         console.log('🔍 BrowserAuthService: User reloaded, emailVerified:', user.emailVerified);
+        
+        // Manually trigger auth state listeners to ensure UI updates
+        console.log('🔍 BrowserAuthService: Triggering auth state update after reload');
+        this._authStateListeners.forEach(callback => {
+          try {
+            callback(user);
+          } catch (error) {
+            console.error('🚨 Error in manual auth state trigger:', error);
+          }
+        });
+        
         return user.emailVerified;
       }
       return false;
@@ -138,25 +177,55 @@ class BrowserAuthService {
     }
   }
 
+  // New method: Register auth state listeners
   onAuthStateChanged(callback) {
-    console.log('🔍 BrowserAuthService: onAuthStateChanged listener attached');
+    console.log('🔍 BrowserAuthService: Adding auth state listener');
+    this._authStateListeners.add(callback);
     
-    // Wrap the callback with debugging
-    const wrappedCallback = (user) => {
-      console.log('🔍 BrowserAuthService: Auth state changed event:', user ? `User ${user.uid}` : 'No user');
-      if (user) {
-        console.log('🔍 BrowserAuthService: User details:', {
-          uid: user.uid,
-          email: user.email,
-          emailVerified: user.emailVerified,
-          isAnonymous: user.isAnonymous
-        });
-      }
-      callback(user);
+    // Immediately call with current user state
+    const currentUser = this.auth.currentUser;
+    if (currentUser !== undefined) {
+      console.log('🔍 BrowserAuthService: Immediately calling new listener with current user:', currentUser ? currentUser.uid : 'null');
+      callback(currentUser);
+    }
+    
+    // Return unsubscribe function
+    return () => {
+      console.log('🔍 BrowserAuthService: Removing auth state listener');
+      this._authStateListeners.delete(callback);
     };
+  }
+
+  // New method: Force refresh auth state
+  async forceAuthStateRefresh() {
+    console.log('🔍 BrowserAuthService: Forcing auth state refresh');
+    const currentUser = this.auth.currentUser;
     
-    return onAuthStateChanged(this.auth, wrappedCallback);
+    if (currentUser) {
+      await this.reloadUser();
+    }
+    
+    // Trigger all listeners with current state
+    this._authStateListeners.forEach(callback => {
+      try {
+        callback(currentUser);
+      } catch (error) {
+        console.error('🚨 Error in forced auth state refresh:', error);
+      }
+    });
   }
 }
 
-export default BrowserAuthService;
+// Create singleton instance
+let instance = null;
+
+export const getBrowserAuthService = () => {
+  if (!instance) {
+    console.log('🔍 Creating new BrowserAuthService singleton instance');
+    instance = new BrowserAuthService();
+  }
+  return instance;
+};
+
+// Export singleton instance as default
+export default getBrowserAuthService();
