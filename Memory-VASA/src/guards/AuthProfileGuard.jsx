@@ -1,8 +1,16 @@
 import React, { useEffect, useState } from 'react';
 import { useUserProfile } from '../memory/BrowserMemoryHooks.js';
 
-// Authentication Profile Guard - prevents access without profile
+// Authentication Profile Guard - prevents access without profile - WITH DEBUG LOGGING
 export function AuthProfileGuard({ userUUID, children, onProfileRequired, onSetupRequired }) {
+  console.log('🛡️ AuthProfileGuard: Component rendered with props:', {
+    userUUID,
+    hasChildren: !!children,
+    hasOnProfileRequired: !!onProfileRequired,
+    hasOnSetupRequired: !!onSetupRequired
+  });
+
+  const hookResult = useUserProfile(userUUID);
   const { 
     profile, 
     setupStatus, 
@@ -11,56 +19,112 @@ export function AuthProfileGuard({ userUUID, children, onProfileRequired, onSetu
     requiresProfile, 
     requiresSetup,
     profileExists 
-  } = useUserProfile(userUUID);
+  } = hookResult;
+
+  // 🔍 DEBUG: Log the useUserProfile hook results
+  console.log('🛡️ AuthProfileGuard: useUserProfile hook returned:', {
+    userUUID,
+    profile: profile ? 'EXISTS' : 'NULL',
+    setupStatus: setupStatus ? 'EXISTS' : 'NULL',
+    loading,
+    error: error || 'NONE',
+    requiresProfile,
+    requiresSetup,
+    profileExists,
+    setupCompleted: setupStatus?.setup_completed,
+    fullHookResult: hookResult
+  });
 
   const [accessGranted, setAccessGranted] = useState(false);
 
   useEffect(() => {
-    if (loading) return; // Wait for profile check to complete
+    console.log('🛡️ AuthProfileGuard: useEffect triggered with state:', {
+      loading,
+      requiresProfile,
+      requiresSetup,
+      profileExists,
+      setupCompleted: setupStatus?.setup_completed,
+      userUUID,
+      accessGranted
+    });
+
+    if (loading) {
+      console.log('⏳ AuthProfileGuard: Still loading profile, waiting...');
+      return; // Wait for profile check to complete
+    }
 
     if (requiresProfile) {
       // No profile exists - block access and show profile creation
-      console.log('🚫 Access blocked: Profile required');
+      console.log('🚫 AuthProfileGuard: Profile required - blocking access');
       setAccessGranted(false);
       if (onProfileRequired) {
-        onProfileRequired({
+        console.log('📞 AuthProfileGuard: Calling onProfileRequired callback');
+        const profileInfo = {
           userUUID,
           message: 'Please create your therapeutic profile to continue',
           action: 'create_profile'
-        });
+        };
+        console.log('📞 AuthProfileGuard: Profile info being sent:', profileInfo);
+        onProfileRequired(profileInfo);
+        console.log('✅ AuthProfileGuard: onProfileRequired callback completed');
+      } else {
+        console.error('❌ AuthProfileGuard: onProfileRequired callback is missing!');
       }
       return;
     }
 
     if (requiresSetup) {
       // Profile exists but setup not completed - block access and show setup
-      console.log('🚫 Access blocked: Setup completion required');
+      console.log('🚫 AuthProfileGuard: Setup completion required - blocking access');
       setAccessGranted(false);
       if (onSetupRequired) {
-        onSetupRequired({
+        console.log('📞 AuthProfileGuard: Calling onSetupRequired callback');
+        const setupInfo = {
           userUUID,
           profile,
           message: 'Please complete your profile setup',
           action: 'complete_setup'
-        });
+        };
+        console.log('📞 AuthProfileGuard: Setup info being sent:', setupInfo);
+        onSetupRequired(setupInfo);
+        console.log('✅ AuthProfileGuard: onSetupRequired callback completed');
+      } else {
+        console.error('❌ AuthProfileGuard: onSetupRequired callback is missing!');
       }
       return;
     }
 
     if (profileExists && setupStatus?.setup_completed) {
       // Profile exists and setup complete - grant access
-      console.log('✅ Access granted: Profile verified');
+      console.log('✅ AuthProfileGuard: Profile exists and setup complete - granting access');
       setAccessGranted(true);
       return;
     }
 
     // Fallback: block access if we can't determine status
-    console.log('🚫 Access blocked: Unable to verify profile status');
+    console.log('🚫 AuthProfileGuard: Unable to verify profile status - blocking access as fallback');
+    console.log('🚫 AuthProfileGuard: Fallback triggered with values:', {
+      profileExists,
+      setupCompleted: setupStatus?.setup_completed,
+      setupStatus
+    });
     setAccessGranted(false);
   }, [loading, requiresProfile, requiresSetup, profileExists, setupStatus, userUUID, profile, onProfileRequired, onSetupRequired]);
 
+  // 🔍 DEBUG: Log current render decision
+  console.log('🛡️ AuthProfileGuard: Render decision state:', {
+    loading,
+    error: !!error,
+    accessGranted,
+    willShowLoading: loading,
+    willShowError: !!error,
+    willShowChildren: accessGranted,
+    willShowFallback: !loading && !error && !accessGranted
+  });
+
   // Show loading while checking profile
   if (loading) {
+    console.log('🛡️ AuthProfileGuard: Rendering loading state');
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-center">
@@ -73,6 +137,7 @@ export function AuthProfileGuard({ userUUID, children, onProfileRequired, onSetu
 
   // Show error if profile check failed
   if (error) {
+    console.log('🛡️ AuthProfileGuard: Rendering error state:', error);
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-center">
@@ -85,21 +150,35 @@ export function AuthProfileGuard({ userUUID, children, onProfileRequired, onSetu
 
   // Only render children if access is granted
   if (accessGranted) {
+    console.log('🛡️ AuthProfileGuard: Rendering children (access granted)');
     return children;
   }
 
   // Default blocked access view
+  console.log('🛡️ AuthProfileGuard: Rendering fallback blocked access view');
   return (
     <div className="flex items-center justify-center min-h-screen">
       <div className="text-center">
         <p className="text-gray-600">Access requires profile setup</p>
+        <div className="mt-4 text-sm text-gray-500">
+          <p>Debug Info:</p>
+          <p>requiresProfile: {requiresProfile ? 'true' : 'false'}</p>
+          <p>requiresSetup: {requiresSetup ? 'true' : 'false'}</p>
+          <p>profileExists: {profileExists ? 'true' : 'false'}</p>
+        </div>
       </div>
     </div>
   );
 }
 
-// Profile Creation Component
+// Profile Creation Component - WITH DEBUG LOGGING
 export function ProfileCreationForm({ userUUID, onProfileCreated, onCancel }) {
+  console.log('📋 ProfileCreationForm: Component rendered with props:', {
+    userUUID,
+    hasOnProfileCreated: !!onProfileCreated,
+    hasOnCancel: !!onCancel
+  });
+
   const { createProfile } = useUserProfile(userUUID);
   const [formData, setFormData] = useState({
     display_name: '',
@@ -111,15 +190,25 @@ export function ProfileCreationForm({ userUUID, onProfileCreated, onCancel }) {
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState('');
 
+  console.log('📋 ProfileCreationForm: Current form state:', {
+    formData,
+    creating,
+    error: error || 'NONE',
+    hasCreateProfile: !!createProfile
+  });
+
   const handleSubmit = async (e) => {
     e.preventDefault();
+    console.log('📋 ProfileCreationForm: Form submitted with data:', formData);
     
     if (!formData.display_name.trim()) {
+      console.log('❌ ProfileCreationForm: Validation failed - missing display name');
       setError('Please enter your display name');
       return;
     }
 
     if (formData.therapeutic_goals.length === 0) {
+      console.log('❌ ProfileCreationForm: Validation failed - no therapeutic goals selected');
       setError('Please select at least one therapeutic goal');
       return;
     }
@@ -127,26 +216,35 @@ export function ProfileCreationForm({ userUUID, onProfileCreated, onCancel }) {
     try {
       setCreating(true);
       setError('');
+      console.log('📋 ProfileCreationForm: Starting profile creation...');
       
       const result = await createProfile(formData);
+      console.log('📋 ProfileCreationForm: Profile creation result:', result);
       
       if (result.success) {
-        console.log('✅ Profile created successfully');
+        console.log('✅ ProfileCreationForm: Profile created successfully');
         if (onProfileCreated) {
+          console.log('📞 ProfileCreationForm: Calling onProfileCreated callback');
           onProfileCreated(result);
+          console.log('✅ ProfileCreationForm: onProfileCreated callback completed');
+        } else {
+          console.log('⚠️ ProfileCreationForm: No onProfileCreated callback provided');
         }
       } else {
+        console.log('❌ ProfileCreationForm: Profile creation failed:', result.error);
         setError(result.error || 'Failed to create profile');
       }
     } catch (err) {
-      console.error('Profile creation error:', err);
+      console.error('🚨 ProfileCreationForm: Profile creation error:', err);
       setError('Profile creation failed. Please try again.');
     } finally {
       setCreating(false);
+      console.log('📋 ProfileCreationForm: Profile creation process completed');
     }
   };
 
   const handleGoalToggle = (goal) => {
+    console.log('📋 ProfileCreationForm: Toggling goal:', goal);
     setFormData(prev => ({
       ...prev,
       therapeutic_goals: prev.therapeutic_goals.includes(goal)
@@ -253,7 +351,10 @@ export function ProfileCreationForm({ userUUID, onProfileCreated, onCancel }) {
           {onCancel && (
             <button
               type="button"
-              onClick={onCancel}
+              onClick={() => {
+                console.log('📋 ProfileCreationForm: Cancel button clicked');
+                onCancel();
+              }}
               disabled={creating}
               className="flex-1 px-4 py-2 text-gray-700 bg-gray-200 rounded-md hover:bg-gray-300 disabled:opacity-50"
             >
@@ -273,46 +374,79 @@ export function ProfileCreationForm({ userUUID, onProfileCreated, onCancel }) {
   );
 }
 
-// Example App Integration
+// Example App Integration - WITH COMPREHENSIVE DEBUG LOGGING
 export function AppWithProfileGuard({ userUUID, children }) {
+  console.log('🎯 AppWithProfileGuard: Component rendered with props:', {
+    userUUID,
+    hasChildren: !!children,
+    childrenType: typeof children
+  });
+
   const [showProfileCreation, setShowProfileCreation] = useState(false);
   const [showSetupCompletion, setShowSetupCompletion] = useState(false);
 
+  // 🔍 DEBUG: Log current component state
+  console.log('🎯 AppWithProfileGuard: Current state:', {
+    showProfileCreation,
+    showSetupCompletion,
+    userUUID
+  });
+
   const handleProfileRequired = (profileInfo) => {
-    console.log('Profile required:', profileInfo);
+    console.log('🎯 AppWithProfileGuard: handleProfileRequired called with:', profileInfo);
+    console.log('🎯 AppWithProfileGuard: Setting showProfileCreation to true');
     setShowProfileCreation(true);
+    console.log('🎯 AppWithProfileGuard: showProfileCreation state updated');
   };
 
   const handleSetupRequired = (setupInfo) => {
-    console.log('Setup required:', setupInfo);
+    console.log('🎯 AppWithProfileGuard: handleSetupRequired called with:', setupInfo);
+    console.log('🎯 AppWithProfileGuard: Setting showSetupCompletion to true');
     setShowSetupCompletion(true);
+    console.log('🎯 AppWithProfileGuard: showSetupCompletion state updated');
   };
 
   const handleProfileCreated = (result) => {
-    console.log('Profile created:', result);
+    console.log('🎯 AppWithProfileGuard: handleProfileCreated called with:', result);
+    console.log('🎯 AppWithProfileGuard: Setting showProfileCreation to false');
     setShowProfileCreation(false);
-    // Profile guard will automatically re-check and grant access
+    console.log('🎯 AppWithProfileGuard: Profile guard will automatically re-check and grant access');
   };
 
+  // 🔍 DEBUG: Log render decision
+  console.log('🎯 AppWithProfileGuard: Render decision:', {
+    willShowProfileCreation: showProfileCreation,
+    willShowSetupCompletion: showSetupCompletion,
+    willShowAuthGuard: !showProfileCreation && !showSetupCompletion
+  });
+
   if (showProfileCreation) {
+    console.log('📋 AppWithProfileGuard: Rendering ProfileCreationForm');
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <ProfileCreationForm
           userUUID={userUUID}
           onProfileCreated={handleProfileCreated}
-          onCancel={() => setShowProfileCreation(false)}
+          onCancel={() => {
+            console.log('📋 AppWithProfileGuard: ProfileCreationForm cancelled');
+            setShowProfileCreation(false);
+          }}
         />
       </div>
     );
   }
 
   if (showSetupCompletion) {
+    console.log('🔧 AppWithProfileGuard: Rendering setup completion form');
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
           <p>Setup completion form would go here</p>
           <button
-            onClick={() => setShowSetupCompletion(false)}
+            onClick={() => {
+              console.log('🔧 AppWithProfileGuard: Setup completion cancelled');
+              setShowSetupCompletion(false);
+            }}
             className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-md"
           >
             Back
@@ -322,15 +456,36 @@ export function AppWithProfileGuard({ userUUID, children }) {
     );
   }
 
-  return (
-    <AuthProfileGuard
-      userUUID={userUUID}
-      onProfileRequired={handleProfileRequired}
-      onSetupRequired={handleSetupRequired}
-    >
-      {children}
-    </AuthProfileGuard>
-  );
+  console.log('🛡️ AppWithProfileGuard: Rendering AuthProfileGuard with children');
+  console.log('🛡️ AppWithProfileGuard: Passing callbacks to AuthProfileGuard:', {
+    hasOnProfileRequired: !!handleProfileRequired,
+    hasOnSetupRequired: !!handleSetupRequired
+  });
+
+  try {
+    const result = (
+      <AuthProfileGuard
+        userUUID={userUUID}
+        onProfileRequired={handleProfileRequired}
+        onSetupRequired={handleSetupRequired}
+      >
+        {children}
+      </AuthProfileGuard>
+    );
+    console.log('✅ AppWithProfileGuard: Successfully created AuthProfileGuard component');
+    return result;
+  } catch (error) {
+    console.error('🚨 AppWithProfileGuard: Error creating AuthProfileGuard:', error);
+    return (
+      <div className="min-h-screen bg-red-50 flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-red-600 mb-4">Error in Profile Guard</p>
+          <p className="text-gray-600">Check console for details</p>
+          <p className="text-sm text-gray-500 mt-2">UserUUID: {userUUID}</p>
+        </div>
+      </div>
+    );
+  }
 }
 
 export default AuthProfileGuard;
