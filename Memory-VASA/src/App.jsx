@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import VASAInterface from './VASAInterface'; // FIXED: Changed from './VoiceAgent'
-import { useUserProfile } from '../memory/BrowserMemoryHooks.js'; // Import your existing AuthProfileGuard
+import { AppWithProfileGuard } from './guards/AuthProfileGuard.js'; // Import your existing AuthProfileGuard
 import { getBrowserAuthService } from './services/BrowserAuthService.js'; // Use singleton
 
 // Login Component for authentication (only) - SAME AS BEFORE
