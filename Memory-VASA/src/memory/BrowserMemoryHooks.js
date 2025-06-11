@@ -595,6 +595,22 @@ class BrowserMemoryHooks {
     }
   }
 
+  // Store user profile (called by other parts of your app)
+  async storeUserProfile(userUUID, profileData) {
+    console.warn(`🚫 BLOCKED: Auto-profile creation attempted for: ${userUUID}`);
+    console.warn('Profile data attempted:', profileData);
+    console.warn('Use createNewUser() method instead through proper UI flow');
+    
+    // Return error to prevent auto-creation and force proper profile creation flow
+    return {
+      success: false,
+      error: 'Auto-profile creation disabled. Use profile creation UI.',
+      requires_profile_creation: true,
+      message: 'Please create your therapeutic profile through the proper interface',
+      blocked_auto_creation: true
+    };
+  }
+
   // Update user metrics
   async updateUserMetrics(userUUID, metricsUpdate) {
     try {
