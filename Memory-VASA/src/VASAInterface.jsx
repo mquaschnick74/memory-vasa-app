@@ -22,7 +22,7 @@ const VASAInterface = () => {
   const [isVASASpeaking, setIsVASASpeaking] = useState(false);
   const [sessionMemory, setSessionMemory] = useState([]); // Store conversation memory
 
-  // Logout state
+  // 🆕 ADD THIS: Logout state
   const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   // Memory system hooks
@@ -44,29 +44,7 @@ const VASAInterface = () => {
     context
   } = useConversationContext(userUUID);
 
-  // CSS Stage detection function
-  const detectStage = (response) => {
-    let detectedStage = currentStage; // Default to current stage
-
-    // Stage detection based on VASA's response keywords
-    if (/contradiction|CVDC|hold.*tension|suspend|between/i.test(response)) {
-      detectedStage = '_'; // Suspension - Hold Liminality
-    } else if (/integration|CYVC|completion|whole|unified|resolved/i.test(response)) {
-      detectedStage = '2'; // Completion - Articulate CYVC
-    } else if (/begin|fragment|reveal|origin|start|initial/i.test(response)) {
-      detectedStage = '⊙'; // Pointed Origin - Reveal Fragmentation
-    } else if (/gesture|movement|toward|direction|shift|change/i.test(response)) {
-      detectedStage = '1'; // Gesture Toward - Facilitate Thend
-    } else if (/terminal|loop|end|cycle|closure|recursive/i.test(response)) {
-      detectedStage = '⊘'; // Terminal Symbol - Recursion or Closure
-    } else if (/focus|bind|attention|concentrate|present/i.test(response)) {
-      detectedStage = '•'; // Focus/Bind - Introduce CVDC
-    }
-
-    return detectedStage;
-  };
-
-  // Logout function
+  // 🆕 ADD THIS: Logout function
   const handleLogout = async () => {
     setIsLoggingOut(true);
     
@@ -94,9 +72,6 @@ const VASAInterface = () => {
       localStorage.removeItem('terms_accepted');
       localStorage.removeItem('currentStage');
       localStorage.removeItem('stageHistory');
-      
-      // Clear any other app-specific data you might have stored
-      // Add more localStorage.removeItem() calls here if you have other data to clear
 
       console.log('✅ Logout completed successfully');
       
@@ -109,6 +84,28 @@ const VASAInterface = () => {
     } finally {
       setIsLoggingOut(false);
     }
+  };
+
+  // CSS Stage detection function
+  const detectStage = (response) => {
+    let detectedStage = currentStage; // Default to current stage
+
+    // Stage detection based on VASA's response keywords
+    if (/contradiction|CVDC|hold.*tension|suspend|between/i.test(response)) {
+      detectedStage = '_'; // Suspension - Hold Liminality
+    } else if (/integration|CYVC|completion|whole|unified|resolved/i.test(response)) {
+      detectedStage = '2'; // Completion - Articulate CYVC
+    } else if (/begin|fragment|reveal|origin|start|initial/i.test(response)) {
+      detectedStage = '⊙'; // Pointed Origin - Reveal Fragmentation
+    } else if (/gesture|movement|toward|direction|shift|change/i.test(response)) {
+      detectedStage = '1'; // Gesture Toward - Facilitate Thend
+    } else if (/terminal|loop|end|cycle|closure|recursive/i.test(response)) {
+      detectedStage = '⊘'; // Terminal Symbol - Recursion or Closure
+    } else if (/focus|bind|attention|concentrate|present/i.test(response)) {
+      detectedStage = '•'; // Focus/Bind - Introduce CVDC
+    }
+
+    return detectedStage;
   };
 
   // Inject conversation context when connecting to VASA
@@ -275,7 +272,7 @@ const VASAInterface = () => {
     loadSavedStageData();
   }, []);
 
-  // Auto-logout when user navigates away, closes page, or switches tabs for extended time
+  // 🆕 ADD THIS: Auto-logout functionality
   useEffect(() => {
     let tabHiddenTime = null;
     let logoutTimer = null;
@@ -392,12 +389,6 @@ const VASAInterface = () => {
     document.addEventListener('visibilitychange', handleVisibilityChange);
 
     console.log('✅ Auto-logout listeners attached');
-
-    // Test the logout timer (uncomment for testing)
-    // setTimeout(() => {
-    //   console.log('🧪 Testing auto-logout in 10 seconds...');
-    //   setTimeout(() => performFullLogout().then(() => window.location.reload()), 10000);
-    // }, 1000);
 
     // Cleanup function
     return () => {
@@ -681,7 +672,7 @@ const VASAInterface = () => {
         </div>
       )}
 
-      {/* Main Interface */}
+      {/* 🆕 REPLACE THIS SECTION: Main Interface with Logout Button */}
       <div style={styles.header}>
         <div style={{ 
           display: 'flex', 
@@ -887,7 +878,7 @@ const VASAInterface = () => {
           </div>
         )}
 
-        {/* Security Notice */}
+        {/* 🆕 ADD THIS: Security Notice */}
         <div style={{
           marginTop: '12px',
           fontSize: '0.75rem',
