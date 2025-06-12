@@ -44,7 +44,7 @@ const VASAInterface = () => {
     context
   } = useConversationContext(userUUID);
 
-  // 🆕 ADD THIS: Logout function
+  // 🆕 FIXED: Logout function with correct auth service usage
   const handleLogout = async () => {
     setIsLoggingOut(true);
     
@@ -60,11 +60,11 @@ const VASAInterface = () => {
         setIsThinking(false);
       }
 
-      // Import and use the auth service to sign out
+      // ✅ FIXED: Import and use the auth service singleton correctly
       console.log('🔍 Signing out from Firebase...');
-      const { default: BrowserAuthService } = await import('./services/BrowserAuthService.js');
-      const auth = new BrowserAuthService();
-      await auth.signOut();
+      const authService = await import('./services/BrowserAuthService.js');
+      // Use the default export which is already the singleton instance
+      await authService.default.signOut();
 
       // Clear all localStorage data
       console.log('🔍 Clearing localStorage data...');
@@ -272,7 +272,7 @@ const VASAInterface = () => {
     loadSavedStageData();
   }, []);
 
-  // 🆕 ADD THIS: Auto-logout functionality
+  // 🆕 FIXED: Auto-logout functionality with correct auth service usage
   useEffect(() => {
     let tabHiddenTime = null;
     let logoutTimer = null;
@@ -302,11 +302,10 @@ const VASAInterface = () => {
         // Clear localStorage immediately
         immediateCleanup();
 
-        // Try Firebase signout (may fail if page is closing)
+        // ✅ FIXED: Try Firebase signout with correct singleton usage
         try {
-          const { default: BrowserAuthService } = await import('./services/BrowserAuthService.js');
-          const auth = new BrowserAuthService();
-          await auth.signOut();
+          const authService = await import('./services/BrowserAuthService.js');
+          await authService.default.signOut();
           console.log('✅ Firebase signout successful');
         } catch (error) {
           console.log('⚠️ Firebase signout failed (page may be closing):', error.message);
@@ -672,7 +671,7 @@ const VASAInterface = () => {
         </div>
       )}
 
-      {/* 🆕 REPLACE THIS SECTION: Main Interface with Logout Button */}
+      {/* Main Interface with Logout Button */}
       <div style={styles.header}>
         <div style={{ 
           display: 'flex', 
@@ -878,7 +877,7 @@ const VASAInterface = () => {
           </div>
         )}
 
-        {/* 🆕 ADD THIS: Security Notice */}
+        {/* Security Notice */}
         <div style={{
           marginTop: '12px',
           fontSize: '0.75rem',
