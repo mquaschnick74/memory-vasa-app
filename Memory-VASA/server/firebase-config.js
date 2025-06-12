@@ -17,12 +17,12 @@ const firebaseConfig = {
 
 // 🐛 DEBUG: Log each field individually
 console.log('🔧 Firebase Config Debug:');
-console.log('apiKey:', process.env.NEXT_PUBLIC_FIREBASE_API_KEY ? '✅ SET' : '❌ MISSING');
-console.log('authDomain:', process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN ? '✅ SET' : '❌ MISSING');
-console.log('projectId:', process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID ? '✅ SET' : '❌ MISSING');
-console.log('storageBucket:', process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET ? '✅ SET' : '❌ MISSING');
-console.log('messagingSenderId:', process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID ? '✅ SET' : '❌ MISSING');
-console.log('appId:', process.env.NEXT_PUBLIC_FIREBASE_APP_ID ? '✅ SET' : '❌ MISSING');
+console.log('apiKey:', process.env.VITE_FIREBASE_API_KEY ? '✅ SET' : '❌ MISSING');
+console.log('authDomain:', process.env.VITE_FIREBASE_AUTH_DOMAIN ? '✅ SET' : '❌ MISSING');
+console.log('projectId:', process.env.VITE_FIREBASE_PROJECT_ID ? '✅ SET' : '❌ MISSING');
+console.log('storageBucket:', process.env.VITE_FIREBASE_STORAGE_BUCKET ? '✅ SET' : '❌ MISSING');
+console.log('messagingSenderId:', process.env.VITE_FIREBASE_MESSAGING_SENDER_ID ? '✅ SET' : '❌ MISSING');
+console.log('appId:', process.env.VITE_FIREBASE_APP_ID ? '✅ SET' : '❌ MISSING');
 console.log('Final config object:', firebaseConfig);
 
 // Initialize Firebase
