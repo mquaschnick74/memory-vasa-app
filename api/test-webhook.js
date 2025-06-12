@@ -1,11 +1,8 @@
-// /api/test-webhook.js - Simple test endpoint
-export default async function handler(req, res) {
-  console.log('🔔 Test endpoint working!');
-  
+// /api/simple-test.js - Zero dependencies test
+export default function handler(req, res) {
   return res.json({ 
-    message: 'API is deployed and working!', 
+    message: 'Ultra simple test works!',
     timestamp: new Date().toISOString(),
-    method: req.method,
-    status: 'success'
+    method: req.method
   });
 }
