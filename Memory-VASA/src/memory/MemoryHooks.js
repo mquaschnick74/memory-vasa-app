@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import MemoryManager from './MemoryManager.js';
 
-// Use MemoryManager singleton - initialize once
-const memoryManager = MemoryManager.getInstance();
+// Use the corrected MemoryManager singleton
+const memoryManager = MemoryManager;
 
 // Hook for conversation memory
 export const useConversationMemory = (userUUID) => {
@@ -126,8 +126,12 @@ export const useUserProfile = (userUUID) => {
     try {
       setIsLoading(true);
       const result = await memoryManager.storeUserProfile(userUUID, profileData);
-      setProfile({ ...profileData, userUUID });
-      setError(null);
+      if (result.success) {
+        setProfile({ ...profileData, userUUID });
+        setError(null);
+      } else {
+        setError(result.error || 'Failed to update profile');
+      }
       return result;
     } catch (err) {
       setError(err.message);
@@ -147,7 +151,7 @@ export const useUserProfile = (userUUID) => {
       return;
     }
 
-    const loadProfile = async () => {
+    const loadProfileData = async () => {
       try {
         setIsLoading(true);
         setError(null);
@@ -170,7 +174,7 @@ export const useUserProfile = (userUUID) => {
       }
     };
 
-    loadProfile();
+    loadProfileData();
   }, [userUUID]);
 
   return {
@@ -182,31 +186,47 @@ export const useUserProfile = (userUUID) => {
   };
 };
 
-// Hook for conversation context injection
+// FIXED: Hook for conversation context injection with getConversationContext
 export const useConversationContext = (userUUID) => {
   const [context, setContext] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState(null);
 
   const getContext = useCallback(async () => {
     if (!userUUID) return null;
 
     setIsLoading(true);
+    setError(null);
+    
     try {
+      // Use the corrected getConversationContext method
       const contextData = await memoryManager.getConversationContext(userUUID);
       setContext(contextData);
       return contextData;
     } catch (error) {
       console.error('Failed to get conversation context:', error);
+      setError(error.message);
       return null;
     } finally {
       setIsLoading(false);
     }
   }, [userUUID]);
 
+  // Auto-load context when userUUID changes
+  useEffect(() => {
+    if (userUUID) {
+      getContext();
+    } else {
+      setContext(null);
+      setError(null);
+    }
+  }, [userUUID, getContext]);
+
   return {
     context,
     getContext,
-    isLoading
+    isLoading,
+    error
   };
 };
 
@@ -248,7 +268,77 @@ export const useDataManagement = () => {
   };
 };
 
+// Hook for user setup status
+export const useUserSetupStatus = (userUUID) => {
+  const [setupStatus, setSetupStatus] = useState(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState(null);
+
+  const loadSetupStatus = useCallback(async () => {
+    if (!userUUID) return;
+
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const status = await memoryManager.getUserSetupStatus(userUUID);
+      setSetupStatus(status);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [userUUID]);
+
+  useEffect(() => {
+    loadSetupStatus();
+  }, [loadSetupStatus]);
+
+  return {
+    setupStatus,
+    isLoading,
+    error,
+    refreshSetupStatus: loadSetupStatus
+  };
+};
+
+// Hook for creating new users
+export const useUserCreation = () => {
+  const [isCreating, setIsCreating] = useState(false);
+  const [creationError, setCreationError] = useState(null);
+
+  const createNewUser = useCallback(async (userUUID, profileData = {}) => {
+    if (!userUUID) {
+      setCreationError('No user UUID provided');
+      return { success: false, error: 'No user UUID provided' };
+    }
+
+    setIsCreating(true);
+    setCreationError(null);
+
+    try {
+      const result = await memoryManager.createNewUser(userUUID, profileData);
+      if (!result.success) {
+        setCreationError(result.error || 'User creation failed');
+      }
+      return result;
+    } catch (error) {
+      console.error('Failed to create new user:', error);
+      setCreationError(error.message || 'Unknown error occurred');
+      return { success: false, error: error.message };
+    } finally {
+      setIsCreating(false);
+    }
+  }, []);
+
+  return {
+    createNewUser,
+    isCreating,
+    creationError
+  };
+};
+
 export { memoryManager };
 
 // Export getInstance for components that need it
-export const getMemoryManager = () => MemoryManager.getInstance();
+export const getMemoryManager = () => memoryManager;
