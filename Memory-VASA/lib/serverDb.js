@@ -1,5 +1,5 @@
-// lib/serverDb.js - Server-side database functions using Firebase Admin SDK
-import admin from 'firebase-admin';
+// lib/serverDb.js - Fixed for CommonJS compatibility
+const admin = require('firebase-admin'); // CHANGED: import -> require
 
 // Initialize Firebase Admin SDK (server-side)
 if (!admin.apps.length) {
@@ -20,7 +20,7 @@ const db = admin.firestore();
 // ============================================================================
 
 // Store or update conversation ID to user UUID mapping
-export const storeConversationMapping = async (conversationId, userUUID) => {
+const storeConversationMapping = async (conversationId, userUUID) => {
   try {
     const mappingRef = db.collection('conversation_mappings').doc(conversationId);
     
@@ -41,7 +41,7 @@ export const storeConversationMapping = async (conversationId, userUUID) => {
 };
 
 // Get user UUID from conversation ID
-export const getUserFromConversation = async (conversationId) => {
+const getUserFromConversation = async (conversationId) => {
   try {
     if (!conversationId) {
       return null;
@@ -66,7 +66,7 @@ export const getUserFromConversation = async (conversationId) => {
 };
 
 // Register a new conversation when starting with ElevenLabs
-export const registerConversation = async (userUUID, conversationId, additionalData = {}) => {
+const registerConversation = async (userUUID, conversationId, additionalData = {}) => {
   try {
     if (!userUUID || !conversationId) {
       throw new Error('User UUID and conversation ID are required');
@@ -101,12 +101,8 @@ export const registerConversation = async (userUUID, conversationId, additionalD
   }
 };
 
-// ============================================================================
-// USER CONTEXT (compatible with your existing structure)
-// ============================================================================
-
-// Store conversation data in the user_context collection (like your existing pattern)
-export const storeConversationData = async (userUUID, data) => {
+// Store conversation data in the user_context collection
+const storeConversationData = async (userUUID, data) => {
   try {
     const contextId = `webhook_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     
@@ -146,7 +142,7 @@ export const storeConversationData = async (userUUID, data) => {
 };
 
 // Get conversation history for VASA context
-export const getConversationHistory = async (userUUID, limit = 20) => {
+const getConversationHistory = async (userUUID, limit = 20) => {
   try {
     const contextRef = db.collection('users').doc(userUUID).collection('user_context');
     const snapshot = await contextRef
@@ -173,111 +169,11 @@ export const getConversationHistory = async (userUUID, limit = 20) => {
   }
 };
 
-// ============================================================================
-// CONVERSATION MANAGEMENT
-// ============================================================================
-
-// Get all conversations for a user
-export const getAllUserConversations = async (userUUID) => {
-  try {
-    const mappingsRef = db.collection('conversation_mappings');
-    const snapshot = await mappingsRef
-      .where('user_uuid', '==', userUUID)
-      .orderBy('created_at', 'desc')
-      .get();
-
-    const conversations = [];
-    snapshot.forEach(doc => {
-      conversations.push({
-        id: doc.id,
-        ...doc.data()
-      });
-    });
-
-    return conversations;
-
-  } catch (error) {
-    console.error('❌ Failed to get user conversations:', error);
-    throw error;
-  }
-};
-
-// End/close a conversation
-export const endConversation = async (conversationId, reason = 'user_ended') => {
-  try {
-    const mappingRef = db.collection('conversation_mappings').doc(conversationId);
-    
-    await mappingRef.update({
-      status: 'ended',
-      ended_at: admin.firestore.Timestamp.now(),
-      end_reason: reason,
-      updated_at: admin.firestore.Timestamp.now()
-    });
-
-    console.log(`✅ Conversation ended: ${conversationId}`);
-    
-    return { success: true, conversation_id: conversationId };
-
-  } catch (error) {
-    console.error('❌ Failed to end conversation:', error);
-    throw error;
-  }
-};
-
-// ============================================================================
-// UTILITY FUNCTIONS
-// ============================================================================
-
-// Get conversation details
-export const getConversationDetails = async (conversationId) => {
-  try {
-    const mappingRef = db.collection('conversation_mappings').doc(conversationId);
-    const doc = await mappingRef.get();
-
-    if (!doc.exists) {
-      return null;
-    }
-
-    return {
-      id: doc.id,
-      ...doc.data()
-    };
-
-  } catch (error) {
-    console.error('❌ Failed to get conversation details:', error);
-    throw error;
-  }
-};
-
-// Clean up old ended conversations (maintenance function)
-export const cleanupOldConversations = async (daysOld = 30) => {
-  try {
-    const cutoffDate = new Date();
-    cutoffDate.setDate(cutoffDate.getDate() - daysOld);
-
-    const mappingsRef = db.collection('conversation_mappings');
-    const snapshot = await mappingsRef
-      .where('status', '==', 'ended')
-      .where('ended_at', '<', admin.firestore.Timestamp.fromDate(cutoffDate))
-      .get();
-
-    const batch = db.batch();
-    let deleteCount = 0;
-
-    snapshot.forEach(doc => {
-      batch.delete(doc.ref);
-      deleteCount++;
-    });
-
-    if (deleteCount > 0) {
-      await batch.commit();
-      console.log(`✅ Cleaned up ${deleteCount} old conversations`);
-    }
-
-    return { success: true, deleted_count: deleteCount };
-
-  } catch (error) {
-    console.error('❌ Failed to cleanup old conversations:', error);
-    throw error;
-  }
+// CHANGED: Export using module.exports instead of export
+module.exports = {
+  storeConversationMapping,
+  getUserFromConversation,
+  registerConversation,
+  storeConversationData,
+  getConversationHistory
 };
