@@ -13,6 +13,7 @@ import {
   limit,
   serverTimestamp 
 } from 'firebase/firestore';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import app from '../firebase-config.js';
 
 class BrowserMemoryHooks {
@@ -23,7 +24,7 @@ class BrowserMemoryHooks {
     console.log('BrowserMemoryHooks initialized with Core Symbol Set Firebase structure');
   }
 
-  // FIXED: createInitialUserContext method
+  // Create initial user context
   async createInitialUserContext(userUUID) {
     const initialContext = {
       context_id: 'context_initial',
@@ -54,14 +55,13 @@ class BrowserMemoryHooks {
     return { success: true, id: 'context_initial' };
   }
 
-  // FIXED: storeConversation method (with user check)
+  // Store conversation with user validation
   async storeConversation(userUUID, conversationData) {
     try {
       // First check if user exists
       const userCheck = await this.checkUserProfile(userUUID);
       if (!userCheck.exists) {
         console.warn(`⚠️ Cannot store conversation - no user profile: ${userUUID}`);
-        // Fallback to localStorage only
         this.fallbackToLocalStorage(userUUID, conversationData);
         return { 
           success: false, 
@@ -120,7 +120,7 @@ class BrowserMemoryHooks {
     }
   }
 
-  // FIXED: Get current stage helper with proper error handling
+  // Get current stage with error handling
   async getCurrentStage(userUUID) {
     try {
       const stageProgressionsRef = collection(this.db, 'users', userUUID, 'stage_progressions');
@@ -160,7 +160,7 @@ class BrowserMemoryHooks {
     return stageFocusMap[stage] || 'general_therapeutic';
   }
 
-  // Get user setup status (for UI to determine what to show)
+  // Get user setup status
   async getUserSetupStatus(userUUID) {
     try {
       const userCheck = await this.checkUserProfile(userUUID);
@@ -219,7 +219,7 @@ class BrowserMemoryHooks {
     }
   }
 
-  // Get user profile (missing method that was being called)
+  // Get user profile
   async getUserProfile(userUUID) {
     try {
       const userRef = doc(this.db, 'users', userUUID);
@@ -257,7 +257,7 @@ class BrowserMemoryHooks {
     }
   }
 
-  // Create new user with CSS structure (only when explicitly requested)
+  // Create new user with CSS structure
   async createNewUser(userUUID, profileData = {}) {
     try {
       // Create user document
@@ -440,7 +440,7 @@ class BrowserMemoryHooks {
     }
   }
 
-  // FIXED: Retrieve conversation history with proper error handling
+  // Retrieve conversation history with proper error handling
   async getConversationHistory(userUUID, limitCount = 20) {
     try {
       if (!userUUID) {
@@ -516,6 +516,147 @@ class BrowserMemoryHooks {
         };
       }
     }
+  }
+
+  // Get conversation context for VASA injection
+  async getConversationContext(userUUID, limit = 10) {
+    try {
+      if (!userUUID) {
+        console.warn('❌ No userUUID provided to getConversationContext');
+        return null;
+      }
+
+      // Get recent conversations from Firebase using existing method
+      const conversationResult = await this.getConversationHistory(userUUID, limit);
+      
+      if (!conversationResult.conversations || conversationResult.conversations.length === 0) {
+        console.log('ℹ️ No conversation history found for context generation');
+        return null;
+      }
+
+      const conversations = conversationResult.conversations;
+      
+      // Extract all messages from conversation threads
+      const allMessages = [];
+      conversations.forEach(conv => {
+        if (conv.conversation_thread && conv.conversation_thread.length > 0) {
+          conv.conversation_thread.forEach(thread => {
+            allMessages.push({
+              sender: thread.sender,
+              message: thread.message,
+              timestamp: thread.timestamp,
+              stage: conv.current_stage || 'unknown'
+            });
+          });
+        }
+      });
+
+      // Sort messages by timestamp
+      allMessages.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+
+      // Generate conversation summary from actual messages
+      const summary = this.generateConversationSummary(allMessages);
+      
+      console.log('✅ Generated conversation context summary:', summary);
+      
+      return {
+        summary,
+        messageCount: allMessages.length,
+        conversationCount: conversations.length,
+        lastSession: conversations[0]?.created_at || new Date(),
+        recentMessages: allMessages.slice(-5) // Last 5 messages for immediate context
+      };
+      
+    } catch (error) {
+      console.error('❌ Failed to get conversation context:', error);
+      return null;
+    }
+  }
+
+  // Generate specific, conversational summaries for VASA
+  generateConversationSummary(messages) {
+    if (!messages || messages.length === 0) {
+      return "No previous conversation history available.";
+    }
+
+    // Get the most recent user messages (last 5)
+    const userMessages = messages.filter(msg => msg.sender === 'user');
+    const recentUserMessages = userMessages.slice(-5);
+    
+    // Get the most recent assistant messages to understand therapeutic direction
+    const assistantMessages = messages.filter(msg => msg.sender === 'assistant' || msg.sender === 'system');
+    const recentAssistantMessages = assistantMessages.slice(-3);
+
+    // Build a conversational, specific summary
+    let summary = '';
+    
+    // Start with the most recent specific user expressions
+    if (recentUserMessages.length > 0) {
+      summary += 'In our recent conversations, you specifically mentioned: ';
+      
+      // Include actual quotes from the user
+      const quotes = recentUserMessages.map(msg => '"' + msg.message + '"');
+      
+      if (quotes.length === 1) {
+        summary += quotes[0];
+      } else if (quotes.length === 2) {
+        summary += quotes[0] + ' and ' + quotes[1];
+      } else {
+        summary += quotes.slice(0, -1).join(', ') + ', and ' + quotes[quotes.length - 1];
+      }
+      
+      summary += '. ';
+    }
+
+    // Add therapeutic context based on content analysis
+    const allUserText = userMessages.map(msg => msg.message.toLowerCase()).join(' ');
+    
+    if (allUserText.includes('external') && allUserText.includes('happiness')) {
+      summary += 'We were exploring your pattern of externalizing happiness and how this relates to seeking validation from others, particularly your wife. ';
+    } else if (allUserText.includes('validation') || allUserText.includes('acknowledge')) {
+      summary += 'We were working on your need for external validation and how it affects your emotional well-being. ';
+    } else if (allUserText.includes('happiness') || allUserText.includes('happy')) {
+      summary += 'We were discussing your relationship with happiness and what influences your emotional state. ';
+    } else if (allUserText.includes('work')) {
+      summary += 'We were examining your work-related concerns and their impact on your well-being. ';
+    }
+
+    // Add therapeutic stage context if relevant
+    if (recentAssistantMessages.some(msg => msg.message.toLowerCase().includes('contradiction'))) {
+      summary += 'We had begun exploring the contradictions and tensions in these patterns. ';
+    }
+    
+    if (recentAssistantMessages.some(msg => msg.message.toLowerCase().includes('fragmentation'))) {
+      summary += 'We identified some fragmentation patterns in how you experience these situations. ';
+    }
+
+    // Add a specific therapeutic direction based on the last exchange
+    if (recentUserMessages.length > 0) {
+      const lastUserMessage = recentUserMessages[recentUserMessages.length - 1].message.toLowerCase();
+      
+      if (lastUserMessage.includes('specific') || lastUserMessage.includes('tell me')) {
+        summary += 'You were asking for more specific insights about these patterns we have been uncovering together.';
+      } else if (lastUserMessage.includes('external') || lastUserMessage.includes('happiness')) {
+        summary += 'You were wanting to dive deeper into how you externalize your happiness and what this means for your relationships.';
+      } else {
+        summary += 'You were ready to continue exploring these themes in more depth.';
+      }
+    }
+
+    // If no specific content, create summary from actual recent messages
+    if (summary.length < 100 && recentUserMessages.length > 0) {
+      summary = 'Based on our recent therapeutic work, you shared these specific concerns: ';
+      recentUserMessages.slice(-3).forEach((msg, index) => {
+        const truncatedMessage = msg.message.length > 150 ? msg.message.substring(0, 150) + '...' : msg.message;
+        summary += '"' + truncatedMessage + '"';
+        if (index < recentUserMessages.slice(-3).length - 1) {
+          summary += ', and then ';
+        }
+      });
+      summary += '. Let us continue from where we left off with these specific themes.';
+    }
+
+    return summary;
   }
 
   // Update stage progression
@@ -623,7 +764,7 @@ class BrowserMemoryHooks {
     }
   }
 
-  // Store user profile (called by other parts of your app)
+  // Store user profile (blocked auto-creation)
   async storeUserProfile(userUUID, profileData) {
     console.warn(`🚫 BLOCKED: Auto-profile creation attempted for: ${userUUID}`);
     console.warn('Profile data attempted:', profileData);
@@ -655,149 +796,7 @@ class BrowserMemoryHooks {
       return { success: false, error: error.message };
     }
   }
-
-  // MISSING METHOD: Add this to fix the conversation context injection
-  async getConversationContext(userUUID, limit = 10) {
-    try {
-      if (!userUUID) {
-        console.warn('❌ No userUUID provided to getConversationContext');
-        return null;
-      }
-
-      // Get recent conversations from Firebase using existing method
-      const conversationResult = await this.getConversationHistory(userUUID, limit);
-      
-      if (!conversationResult.conversations || conversationResult.conversations.length === 0) {
-        console.log('ℹ️ No conversation history found for context generation');
-        return null;
-      }
-
-      const conversations = conversationResult.conversations;
-      
-      // Extract all messages from conversation threads
-      const allMessages = [];
-      conversations.forEach(conv => {
-        if (conv.conversation_thread && conv.conversation_thread.length > 0) {
-          conv.conversation_thread.forEach(thread => {
-            allMessages.push({
-              sender: thread.sender,
-              message: thread.message,
-              timestamp: thread.timestamp,
-              stage: conv.current_stage || 'unknown'
-            });
-          });
-        }
-      });
-
-      // Sort messages by timestamp
-      allMessages.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
-
-      // Generate conversation summary from actual messages
-      const summary = this.generateConversationSummary(allMessages);
-      
-      console.log('✅ Generated conversation context summary:', summary);
-      
-      return {
-        summary,
-        messageCount: allMessages.length,
-        conversationCount: conversations.length,
-        lastSession: conversations[0]?.created_at || new Date(),
-        recentMessages: allMessages.slice(-5) // Last 5 messages for immediate context
-      };
-      
-    } catch (error) {
-      console.error('❌ Failed to get conversation context:', error);
-      return null;
-    }
-  }
-
-// IMPROVED: Helper method to generate more specific, conversational summaries
-  generateConversationSummary(messages) {
-    if (!messages || messages.length === 0) {
-      return "No previous conversation history available.";
-    }
-
-    // Get the most recent user messages (last 5)
-    const userMessages = messages.filter(msg => msg.sender === 'user');
-    const recentUserMessages = userMessages.slice(-5);
-    
-    // Get the most recent assistant messages to understand therapeutic direction
-    const assistantMessages = messages.filter(msg => msg.sender === 'assistant' || msg.sender === 'system');
-    const recentAssistantMessages = assistantMessages.slice(-3);
-
-    // Build a conversational, specific summary
-    let summary = '';
-    
-    // Start with the most recent specific user expressions
-    if (recentUserMessages.length > 0) {
-      summary += `In our recent conversations, you specifically mentioned: `;
-      
-      // Include actual quotes from the user
-      const quotes = recentUserMessages.map(msg => `"${msg.message}"`);
-      
-      if (quotes.length === 1) {
-        summary += quotes[0];
-      } else if (quotes.length === 2) {
-        summary += `${quotes[0]} and ${quotes[1]}`;
-      } else {
-        summary += quotes.slice(0, -1).join(', ') + `, and ${quotes[quotes.length - 1]}`;
-      }
-      
-      summary += '. ';
-    }
-
-    // Add therapeutic context based on content analysis
-    const allUserText = userMessages.map(msg => msg.message.toLowerCase()).join(' ');
-    
-    if (allUserText.includes('external') && allUserText.includes('happiness')) {
-      summary += `We were exploring your pattern of externalizing happiness and how this relates to seeking validation from others, particularly your wife. `;
-    } else if (allUserText.includes('validation') || allUserText.includes('acknowledge')) {
-      summary += `We were working on your need for external validation and how it affects your emotional well-being. `;
-    } else if (allUserText.includes('happiness') || allUserText.includes('happy')) {
-      summary += `We were discussing your relationship with happiness and what influences your emotional state. `;
-    } else if (allUserText.includes('work')) {
-      summary += `We were examining your work-related concerns and their impact on your well-being. `;
-    }
-
-    // Add therapeutic stage context if relevant
-    if (recentAssistantMessages.some(msg => msg.message.toLowerCase().includes('contradiction'))) {
-      summary += `We had begun exploring the contradictions and tensions in these patterns. `;
-    }
-    
-    if (recentAssistantMessages.some(msg => msg.message.toLowerCase().includes('fragmentation'))) {
-      summary += `We identified some fragmentation patterns in how you experience these situations. `;
-    }
-
-    // Add a specific therapeutic direction based on the last exchange
-    if (recentUserMessages.length > 0) {
-      const lastUserMessage = recentUserMessages[recentUserMessages.length - 1].message.toLowerCase();
-      
-      if (lastUserMessage.includes('specific') || lastUserMessage.includes('tell me')) {
-        summary += `You were asking for more specific insights about these patterns we've been uncovering together.`;
-      } else if (lastUserMessage.includes('external') || lastUserMessage.includes('happiness')) {
-        summary += `You were wanting to dive deeper into how you externalize your happiness and what this means for your relationships.`;
-      } else {
-        summary += `You were ready to continue exploring these themes in more depth.`;
-      }
-    }
-
-    // If no specific content, create summary from actual recent messages
-    if (summary.length < 100 && recentUserMessages.length > 0) {
-      summary = `Based on our recent therapeutic work, you shared these specific concerns: `;
-      recentUserMessages.slice(-3).forEach((msg, index) => {
-        summary += `"${msg.message.substring(0, 150)}${msg.message.length > 150 ? '...' : ''}"`;
-        if (index < recentUserMessages.slice(-3).length - 1) {
-          summary += ', and then ';
-        }
-      });
-      summary += '. Let\'s continue from where we left off with these specific themes.';
-    }
-
-    return summary;
-  }
-
-// React hooks for using BrowserMemoryHooks in components
-import { useState, useEffect, useCallback, useMemo } from 'react';
+}
 
 // Global instance for browser memory management
 let globalMemoryManager = null;
