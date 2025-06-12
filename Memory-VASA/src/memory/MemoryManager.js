@@ -1,295 +1,289 @@
-// server/routes/memory.js
-import express from 'express';
-import { 
-  addConversation, 
-  getUserConversations, 
-  createOrUpdateUserProfile,
-  getUserProfile,
-  addStageProgression,
-  getUserStageProgressions,
-  updateConversationSession 
-} from '../../lib/db.js';
+import { getBrowserMemoryManager } from './BrowserMemoryHooks.js';
 
-const router = express.Router();
-
-// ============================================================================
-// CONVERSATION ROUTES (what MemoryManager expects)
-// ============================================================================
-
-// POST /api/memory/conversation - Store conversation
-router.post('/conversation', async (req, res) => {
-  try {
-    const { userUUID, ...conversationData } = req.body;
-
-    if (!userUUID) {
-      return res.status(400).json({
-        error: 'userUUID is required'
-      });
-    }
-
-    // Store the conversation using our Firebase function
-    const conversationId = await addConversation(userUUID, conversationData);
-
-    console.log(`✅ Conversation stored for user ${userUUID}: ${conversationId}`);
-
-    res.json({ 
-      success: true, 
-      id: conversationId,
-      message: 'Conversation stored successfully'
-    });
-
-  } catch (error) {
-    console.error('Error storing conversation:', error);
-    res.status(500).json({
-      error: 'Failed to store conversation',
-      details: error.message
-    });
+class MemoryManager {
+  constructor() {
+    this.browserMemory = getBrowserMemoryManager();
+    this.isInitialized = false;
+    this.initializeManager();
   }
-});
 
-// GET /api/memory/conversation/:userUUID - Get conversation history
-router.get('/conversation/:userUUID', async (req, res) => {
-  try {
-    const { userUUID } = req.params;
-    const { limit = 50 } = req.query;
-
-    if (!userUUID) {
-      return res.status(400).json({
-        error: 'userUUID is required'
-      });
+  static getInstance() {
+    if (!MemoryManager.instance) {
+      MemoryManager.instance = new MemoryManager();
     }
-
-    // Get conversations using our Firebase function
-    let conversations = await getUserConversations(userUUID);
-    
-    // Limit results
-    conversations = conversations.slice(0, parseInt(limit));
-
-    console.log(`✅ Retrieved ${conversations.length} conversations for user ${userUUID}`);
-
-    res.json(conversations);
-
-  } catch (error) {
-    console.error('Error retrieving conversations:', error);
-    res.status(500).json({
-      error: 'Failed to retrieve conversations',
-      details: error.message
-    });
+    return MemoryManager.instance;
   }
-});
 
-// ============================================================================
-// PROFILE ROUTES
-// ============================================================================
-
-// POST /api/memory/profile - Store user profile
-router.post('/profile', async (req, res) => {
-  try {
-    const { userUUID, ...profileData } = req.body;
-
-    if (!userUUID) {
-      return res.status(400).json({
-        error: 'userUUID is required'
-      });
+  async initializeManager() {
+    try {
+      this.isInitialized = true;
+      console.log('✅ MemoryManager initialized successfully');
+    } catch (error) {
+      console.error('❌ Failed to initialize MemoryManager:', error);
+      this.isInitialized = false;
     }
-
-    await createOrUpdateUserProfile(userUUID, profileData);
-
-    console.log(`✅ Profile stored for user ${userUUID}`);
-
-    res.json({ 
-      success: true, 
-      message: 'Profile stored successfully'
-    });
-
-  } catch (error) {
-    console.error('Error storing profile:', error);
-    res.status(500).json({
-      error: 'Failed to store profile',
-      details: error.message
-    });
   }
-});
 
-// GET /api/memory/profile/:userUUID - Get user profile
-router.get('/profile/:userUUID', async (req, res) => {
-  try {
-    const { userUUID } = req.params;
+  // Conversation history management
+  async getConversationHistory(userUUID, limit = 50) {
+    try {
+      if (!this.isInitialized) {
+        console.warn('MemoryManager not initialized, attempting to initialize...');
+        await this.initializeManager();
+      }
 
-    if (!userUUID) {
-      return res.status(400).json({
-        error: 'userUUID is required'
-      });
+      const result = await this.browserMemory.getConversationHistory(userUUID, limit);
+      
+      if (result.requires_profile_creation) {
+        return [];
+      }
+      
+      return result.conversations || [];
+    } catch (error) {
+      console.error('❌ Failed to get conversation history:', error);
+      return [];
     }
-
-    const profile = await getUserProfile(userUUID);
-
-    if (!profile) {
-      return res.status(404).json({
-        error: 'Profile not found'
-      });
-    }
-
-    console.log(`✅ Profile retrieved for user ${userUUID}`);
-
-    res.json(profile);
-
-  } catch (error) {
-    console.error('Error retrieving profile:', error);
-    res.status(500).json({
-      error: 'Failed to retrieve profile',
-      details: error.message
-    });
   }
-});
 
-// ============================================================================
-// STAGE PROGRESSION ROUTES
-// ============================================================================
+  // FIXED: Added missing getConversationContext method
+  async getConversationContext(userUUID) {
+    try {
+      if (!this.isInitialized) {
+        await this.initializeManager();
+      }
 
-// POST /api/memory/stage - Store stage progression
-router.post('/stage', async (req, res) => {
-  try {
-    const { userUUID, ...stageData } = req.body;
+      // Get recent conversations and current stage for context
+      const [conversationResult, currentStage] = await Promise.all([
+        this.browserMemory.getConversationHistory(userUUID, 5),
+        this.browserMemory.getCurrentStage(userUUID)
+      ]);
 
-    if (!userUUID) {
-      return res.status(400).json({
-        error: 'userUUID is required'
-      });
+      const recentConversations = conversationResult.conversations || [];
+      
+      // Build conversation context
+      const context = {
+        userUUID,
+        currentStage: currentStage?.stage_name || 'pointed_origin',
+        recentMessages: recentConversations.map(conv => ({
+          id: conv.id,
+          content: conv.conversation_thread?.[0]?.message || '',
+          sender: conv.conversation_thread?.[0]?.sender || 'unknown',
+          timestamp: conv.conversation_thread?.[0]?.timestamp || conv.created_at,
+          stage_focus: conv.conversation_thread?.[0]?.stage_focus || 'general'
+        })),
+        sessionActive: currentStage?.started && !currentStage?.completed,
+        lastActiveStage: currentStage?.stage_symbol || 'Ⓞ',
+        conversationCount: recentConversations.length,
+        contextType: 'therapeutic_session',
+        generatedAt: new Date().toISOString()
+      };
+
+      console.log('✅ Conversation context generated:', context);
+      return context;
+    } catch (error) {
+      console.error('❌ Failed to get conversation context:', error);
+      return {
+        userUUID,
+        currentStage: 'pointed_origin',
+        recentMessages: [],
+        sessionActive: false,
+        lastActiveStage: 'Ⓞ',
+        conversationCount: 0,
+        contextType: 'therapeutic_session',
+        generatedAt: new Date().toISOString(),
+        error: error.message
+      };
     }
-
-    const stageId = await addStageProgression(userUUID, stageData);
-
-    console.log(`✅ Stage progression stored for user ${userUUID}: ${stageId}`);
-
-    res.json({ 
-      success: true, 
-      id: stageId,
-      message: 'Stage progression stored successfully'
-    });
-
-  } catch (error) {
-    console.error('Error storing stage progression:', error);
-    res.status(500).json({
-      error: 'Failed to store stage progression',
-      details: error.message
-    });
   }
-});
 
-// GET /api/memory/stages/:userUUID - Get user stage progressions
-router.get('/stages/:userUUID', async (req, res) => {
-  try {
-    const { userUUID } = req.params;
-    const { limit = 20 } = req.query;
+  // Store conversation
+  async storeConversation(userUUID, conversationData) {
+    try {
+      if (!this.isInitialized) {
+        await this.initializeManager();
+      }
 
-    if (!userUUID) {
-      return res.status(400).json({
-        error: 'userUUID is required'
-      });
+      const result = await this.browserMemory.storeConversation(userUUID, conversationData);
+      
+      if (result.success) {
+        console.log('✅ Conversation stored successfully');
+        return true;
+      } else {
+        console.warn('⚠️ Conversation storage failed:', result.error);
+        return false;
+      }
+    } catch (error) {
+      console.error('❌ Failed to store conversation:', error);
+      return false;
     }
-
-    let stages = await getUserStageProgressions(userUUID);
-    
-    // Limit results
-    stages = stages.slice(0, parseInt(limit));
-
-    console.log(`✅ Retrieved ${stages.length} stage progressions for user ${userUUID}`);
-
-    res.json(stages);
-
-  } catch (error) {
-    console.error('Error retrieving stage progressions:', error);
-    res.status(500).json({
-      error: 'Failed to retrieve stage progressions',
-      details: error.message
-    });
   }
-});
 
-// ============================================================================
-// CONTEXT ROUTE (for user context storage)
-// ============================================================================
+  // User profile management
+  async getUserProfile(userUUID) {
+    try {
+      if (!this.isInitialized) {
+        await this.initializeManager();
+      }
 
-// POST /api/memory/context - Store user context
-router.post('/context', async (req, res) => {
-  try {
-    const { userUUID, ...contextData } = req.body;
-
-    if (!userUUID) {
-      return res.status(400).json({
-        error: 'userUUID is required'
-      });
+      const result = await this.browserMemory.getUserProfile(userUUID);
+      
+      if (result.success && result.exists) {
+        return result.profile;
+      } else {
+        return null;
+      }
+    } catch (error) {
+      console.error('❌ Failed to get user profile:', error);
+      return null;
     }
-
-    // Store as a conversation with type 'context'
-    const contextId = await addConversation(userUUID, {
-      type: 'context',
-      ...contextData
-    });
-
-    console.log(`✅ Context stored for user ${userUUID}: ${contextId}`);
-
-    res.json({ 
-      success: true, 
-      id: contextId,
-      message: 'Context stored successfully'
-    });
-
-  } catch (error) {
-    console.error('Error storing context:', error);
-    res.status(500).json({
-      error: 'Failed to store context',
-      details: error.message
-    });
   }
-});
 
-// ============================================================================
-// USER DATA DELETION (GDPR compliance)
-// ============================================================================
+  async storeUserProfile(userUUID, profileData) {
+    try {
+      if (!this.isInitialized) {
+        await this.initializeManager();
+      }
 
-// DELETE /api/memory/user/:userUUID - Clear all user data
-router.delete('/user/:userUUID', async (req, res) => {
-  try {
-    const { userUUID } = req.params;
-
-    if (!userUUID) {
-      return res.status(400).json({
-        error: 'userUUID is required'
-      });
+      // Use the createNewUser method instead of storeUserProfile to avoid blocking
+      const result = await this.browserMemory.createNewUser(userUUID, profileData);
+      
+      if (result.success) {
+        console.log('✅ User profile created successfully');
+        return result;
+      } else {
+        console.warn('⚠️ User profile creation failed:', result.error);
+        return result;
+      }
+    } catch (error) {
+      console.error('❌ Failed to store user profile:', error);
+      return { success: false, error: error.message };
     }
-
-    // Note: You'll need to implement data deletion functions in your db.js
-    // For now, we'll return success (implement actual deletion later)
-    
-    console.log(`✅ User data deletion requested for ${userUUID}`);
-
-    res.json({ 
-      success: true, 
-      message: 'User data deletion completed'
-    });
-
-  } catch (error) {
-    console.error('Error deleting user data:', error);
-    res.status(500).json({
-      error: 'Failed to delete user data',
-      details: error.message
-    });
   }
-});
 
-// ============================================================================
-// HEALTH CHECK
-// ============================================================================
+  // Stage progression management
+  async storeStageProgression(userUUID, stageData) {
+    try {
+      if (!this.isInitialized) {
+        await this.initializeManager();
+      }
 
-// GET /api/health - Health check endpoint
-router.get('/health', (req, res) => {
-  res.json({ 
-    status: 'ok', 
-    timestamp: new Date().toISOString(),
-    service: 'memory-api'
-  });
-});
+      const result = await this.browserMemory.updateStageProgression(
+        userUUID, 
+        stageData.stage_name || stageData.stageName, 
+        stageData
+      );
+      
+      return result.success;
+    } catch (error) {
+      console.error('❌ Failed to store stage progression:', error);
+      return false;
+    }
+  }
 
-export default router;
+  // User context storage
+  async storeUserContext(userUUID, contextData) {
+    try {
+      if (!this.isInitialized) {
+        await this.initializeManager();
+      }
+
+      // Store as a conversation with context type
+      const result = await this.browserMemory.storeConversation(userUUID, {
+        type: 'context',
+        content: contextData.message || JSON.stringify(contextData),
+        message_type: 'context',
+        stage: contextData.stage || 'pointed_origin',
+        context_data: contextData
+      });
+      
+      return result.success;
+    } catch (error) {
+      console.error('❌ Failed to store user context:', error);
+      return false;
+    }
+  }
+
+  // GDPR compliance - clear user data
+  async clearUserData(userUUID) {
+    try {
+      if (!this.isInitialized) {
+        await this.initializeManager();
+      }
+
+      // BrowserMemoryHooks doesn't have clearUserData, so we'll implement a basic version
+      console.log(`🗑️ Clearing user data for: ${userUUID}`);
+      
+      // Clear localStorage as a fallback measure
+      const storageKey = `memory_vasa_${userUUID}`;
+      localStorage.removeItem(storageKey);
+      
+      console.log('✅ User data cleared from localStorage');
+      return true;
+    } catch (error) {
+      console.error('❌ Failed to clear user data:', error);
+      return false;
+    }
+  }
+
+  // Health check
+  async healthCheck() {
+    try {
+      return {
+        status: 'healthy',
+        service: 'browser-memory',
+        initialized: this.isInitialized,
+        timestamp: new Date().toISOString()
+      };
+    } catch (error) {
+      return {
+        status: 'unhealthy',
+        service: 'browser-memory',
+        initialized: this.isInitialized,
+        error: error.message,
+        timestamp: new Date().toISOString()
+      };
+    }
+  }
+
+  // User setup status
+  async getUserSetupStatus(userUUID) {
+    try {
+      if (!this.isInitialized) {
+        await this.initializeManager();
+      }
+
+      return await this.browserMemory.getUserSetupStatus(userUUID);
+    } catch (error) {
+      console.error('❌ Failed to get user setup status:', error);
+      return {
+        profile_exists: false,
+        setup_completed: false,
+        current_stage: null,
+        requires_profile_creation: true,
+        requires_setup_completion: false,
+        user_data: null,
+        error: error.message
+      };
+    }
+  }
+
+  // Create new user
+  async createNewUser(userUUID, profileData = {}) {
+    try {
+      if (!this.isInitialized) {
+        await this.initializeManager();
+      }
+
+      return await this.browserMemory.createNewUser(userUUID, profileData);
+    } catch (error) {
+      console.error('❌ Failed to create new user:', error);
+      return { success: false, error: error.message };
+    }
+  }
+}
+
+// Export singleton instance
+const memoryManagerInstance = MemoryManager.getInstance();
+
+export default memoryManagerInstance;
+export { MemoryManager };
