@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useUserProfile } from '../memory/BrowserMemoryHooks.js';
 
-// Authentication Profile Guard - prevents access without profile - WITH DEBUG LOGGING
+// Authentication Profile Guard - prevents access without profile - WITH DEBUG LOGGING AND INLINE STYLES
 export function AuthProfileGuard({ userUUID, children, onProfileRequired, onSetupRequired }) {
   console.log('🛡️ AuthProfileGuard: Component rendered with props:', {
     userUUID,
@@ -122,27 +122,74 @@ export function AuthProfileGuard({ userUUID, children, onProfileRequired, onSetu
     willShowFallback: !loading && !error && !accessGranted
   });
 
-  // Show loading while checking profile
+  // Show loading while checking profile - FIXED: Using inline styles instead of Tailwind
   if (loading) {
     console.log('🛡️ AuthProfileGuard: Rendering loading state');
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
-          <p className="text-gray-600">Checking your profile...</p>
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        minHeight: '100vh',
+        backgroundColor: '#f8f9fa',
+        fontFamily: 'system-ui, -apple-system, sans-serif'
+      }}>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{
+            width: '48px',
+            height: '48px',
+            border: '4px solid #e9ecef',
+            borderTop: '4px solid #007bff',
+            borderRadius: '50%',
+            animation: 'spin 1s linear infinite',
+            margin: '0 auto 24px auto'
+          }}></div>
+          <p style={{
+            color: '#6c757d',
+            fontSize: '18px',
+            margin: '0'
+          }}>
+            Checking your profile...
+          </p>
+          <style>{`
+            @keyframes spin {
+              0% { transform: rotate(0deg); }
+              100% { transform: rotate(360deg); }
+            }
+          `}</style>
         </div>
       </div>
     );
   }
 
-  // Show error if profile check failed
+  // Show error if profile check failed - FIXED: Using inline styles instead of Tailwind
   if (error) {
     console.log('🛡️ AuthProfileGuard: Rendering error state:', error);
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center">
-          <p className="text-red-600 mb-4">Unable to verify your profile</p>
-          <p className="text-gray-600">{error}</p>
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        minHeight: '100vh',
+        backgroundColor: '#f8f9fa',
+        fontFamily: 'system-ui, -apple-system, sans-serif'
+      }}>
+        <div style={{ textAlign: 'center', maxWidth: '400px', padding: '20px' }}>
+          <p style={{
+            color: '#dc3545',
+            fontSize: '18px',
+            fontWeight: '600',
+            marginBottom: '16px'
+          }}>
+            Unable to verify your profile
+          </p>
+          <p style={{
+            color: '#6c757d',
+            fontSize: '16px',
+            margin: '0'
+          }}>
+            {error}
+          </p>
         </div>
       </div>
     );
@@ -154,24 +201,45 @@ export function AuthProfileGuard({ userUUID, children, onProfileRequired, onSetu
     return children;
   }
 
-  // Default blocked access view
+  // Default blocked access view - FIXED: Using inline styles instead of Tailwind
   console.log('🛡️ AuthProfileGuard: Rendering fallback blocked access view');
   return (
-    <div className="flex items-center justify-center min-h-screen">
-      <div className="text-center">
-        <p className="text-gray-600">Access requires profile setup</p>
-        <div className="mt-4 text-sm text-gray-500">
-          <p>Debug Info:</p>
-          <p>requiresProfile: {requiresProfile ? 'true' : 'false'}</p>
-          <p>requiresSetup: {requiresSetup ? 'true' : 'false'}</p>
-          <p>profileExists: {profileExists ? 'true' : 'false'}</p>
+    <div style={{
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      minHeight: '100vh',
+      backgroundColor: '#f8f9fa',
+      fontFamily: 'system-ui, -apple-system, sans-serif'
+    }}>
+      <div style={{ textAlign: 'center', maxWidth: '400px', padding: '20px' }}>
+        <p style={{
+          color: '#6c757d',
+          fontSize: '18px',
+          marginBottom: '20px'
+        }}>
+          Access requires profile setup
+        </p>
+        <div style={{
+          marginTop: '16px',
+          fontSize: '14px',
+          color: '#8e8e93',
+          backgroundColor: '#f8f9fa',
+          padding: '16px',
+          borderRadius: '8px',
+          border: '1px solid #e9ecef'
+        }}>
+          <p style={{ margin: '0 0 8px 0', fontWeight: '600' }}>Debug Info:</p>
+          <p style={{ margin: '4px 0' }}>requiresProfile: {requiresProfile ? 'true' : 'false'}</p>
+          <p style={{ margin: '4px 0' }}>requiresSetup: {requiresSetup ? 'true' : 'false'}</p>
+          <p style={{ margin: '4px 0' }}>profileExists: {profileExists ? 'true' : 'false'}</p>
         </div>
       </div>
     </div>
   );
 }
 
-// Profile Creation Component - WITH DEBUG LOGGING
+// Profile Creation Component - FIXED: Using inline styles instead of Tailwind
 export function ProfileCreationForm({ userUUID, onProfileCreated, onCancel }) {
   console.log('📋 ProfileCreationForm: Component rendered with props:', {
     userUUID,
@@ -265,116 +333,265 @@ export function ProfileCreationForm({ userUUID, onProfileCreated, onCancel }) {
   ];
 
   return (
-    <div className="max-w-md mx-auto p-6 bg-white rounded-lg shadow-lg">
-      <h2 className="text-2xl font-bold text-center mb-6">Create Your Therapeutic Profile</h2>
-      
-      <form onSubmit={handleSubmit} className="space-y-4">
-        {/* Display Name */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Display Name *
-          </label>
-          <input
-            type="text"
-            value={formData.display_name}
-            onChange={(e) => setFormData(prev => ({ ...prev, display_name: e.target.value }))}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-            placeholder="How would you like to be addressed?"
-            disabled={creating}
-          />
-        </div>
-
-        {/* Therapeutic Goals */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Therapeutic Goals * (Select all that apply)
-          </label>
-          <div className="grid grid-cols-2 gap-2">
-            {therapeuticGoals.map((goal) => (
-              <label key={goal} className="flex items-center space-x-2 text-sm">
-                <input
-                  type="checkbox"
-                  checked={formData.therapeutic_goals.includes(goal)}
-                  onChange={() => handleGoalToggle(goal)}
-                  disabled={creating}
-                  className="rounded"
-                />
-                <span>{goal}</span>
-              </label>
-            ))}
+    <div style={{
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      minHeight: '100vh',
+      backgroundColor: '#f8f9fa',
+      padding: '20px',
+      fontFamily: 'system-ui, -apple-system, sans-serif'
+    }}>
+      <div style={{
+        maxWidth: '500px',
+        width: '100%',
+        backgroundColor: 'white',
+        borderRadius: '12px',
+        boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
+        padding: '40px',
+        margin: '20px auto'
+      }}>
+        <h2 style={{
+          fontSize: '28px',
+          fontWeight: 'bold',
+          textAlign: 'center',
+          marginBottom: '30px',
+          color: '#333',
+          margin: '0 0 30px 0'
+        }}>
+          Create Your Therapeutic Profile
+        </h2>
+        
+        <form onSubmit={handleSubmit} style={{ width: '100%' }}>
+          {/* Display Name */}
+          <div style={{ marginBottom: '20px' }}>
+            <label style={{
+              display: 'block',
+              fontSize: '14px',
+              fontWeight: '500',
+              color: '#374151',
+              marginBottom: '8px'
+            }}>
+              Display Name *
+            </label>
+            <input
+              type="text"
+              value={formData.display_name}
+              onChange={(e) => setFormData(prev => ({ ...prev, display_name: e.target.value }))}
+              style={{
+                width: '100%',
+                padding: '12px',
+                border: '1px solid #d1d5db',
+                borderRadius: '6px',
+                fontSize: '16px',
+                outline: 'none',
+                boxSizing: 'border-box',
+                backgroundColor: creating ? '#f9fafb' : 'white'
+              }}
+              placeholder="How would you like to be addressed?"
+              disabled={creating}
+              onFocus={(e) => e.target.style.borderColor = '#3b82f6'}
+              onBlur={(e) => e.target.style.borderColor = '#d1d5db'}
+            />
           </div>
-        </div>
 
-        {/* Session Length */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Preferred Session Length
-          </label>
-          <select
-            value={formData.session_length}
-            onChange={(e) => setFormData(prev => ({ ...prev, session_length: e.target.value }))}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-            disabled={creating}
-          >
-            <option value="short">Short (15-20 minutes)</option>
-            <option value="standard">Standard (30-45 minutes)</option>
-            <option value="extended">Extended (60+ minutes)</option>
-          </select>
-        </div>
-
-        {/* Intensity */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Therapeutic Intensity
-          </label>
-          <select
-            value={formData.intensity}
-            onChange={(e) => setFormData(prev => ({ ...prev, intensity: e.target.value }))}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-            disabled={creating}
-          >
-            <option value="gentle">Gentle (Slow pace, comfort focus)</option>
-            <option value="moderate">Moderate (Balanced approach)</option>
-            <option value="intensive">Intensive (Deep work, faster pace)</option>
-          </select>
-        </div>
-
-        {/* Error Message */}
-        {error && (
-          <div className="text-red-600 text-sm text-center">
-            {error}
+          {/* Therapeutic Goals */}
+          <div style={{ marginBottom: '20px' }}>
+            <label style={{
+              display: 'block',
+              fontSize: '14px',
+              fontWeight: '500',
+              color: '#374151',
+              marginBottom: '8px'
+            }}>
+              Therapeutic Goals * (Select all that apply)
+            </label>
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(2, 1fr)',
+              gap: '8px',
+              marginTop: '8px'
+            }}>
+              {therapeuticGoals.map((goal) => (
+                <label key={goal} style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  fontSize: '14px',
+                  cursor: creating ? 'not-allowed' : 'pointer',
+                  opacity: creating ? 0.6 : 1,
+                  padding: '4px'
+                }}>
+                  <input
+                    type="checkbox"
+                    checked={formData.therapeutic_goals.includes(goal)}
+                    onChange={() => handleGoalToggle(goal)}
+                    disabled={creating}
+                    style={{
+                      marginRight: '8px',
+                      cursor: creating ? 'not-allowed' : 'pointer'
+                    }}
+                  />
+                  <span>{goal}</span>
+                </label>
+              ))}
+            </div>
           </div>
-        )}
 
-        {/* Buttons */}
-        <div className="flex space-x-3 pt-4">
-          {onCancel && (
-            <button
-              type="button"
-              onClick={() => {
-                console.log('📋 ProfileCreationForm: Cancel button clicked');
-                onCancel();
+          {/* Session Length */}
+          <div style={{ marginBottom: '20px' }}>
+            <label style={{
+              display: 'block',
+              fontSize: '14px',
+              fontWeight: '500',
+              color: '#374151',
+              marginBottom: '8px'
+            }}>
+              Preferred Session Length
+            </label>
+            <select
+              value={formData.session_length}
+              onChange={(e) => setFormData(prev => ({ ...prev, session_length: e.target.value }))}
+              style={{
+                width: '100%',
+                padding: '12px',
+                border: '1px solid #d1d5db',
+                borderRadius: '6px',
+                fontSize: '16px',
+                outline: 'none',
+                boxSizing: 'border-box',
+                backgroundColor: creating ? '#f9fafb' : 'white',
+                cursor: creating ? 'not-allowed' : 'pointer'
               }}
               disabled={creating}
-              className="flex-1 px-4 py-2 text-gray-700 bg-gray-200 rounded-md hover:bg-gray-300 disabled:opacity-50"
+              onFocus={(e) => e.target.style.borderColor = '#3b82f6'}
+              onBlur={(e) => e.target.style.borderColor = '#d1d5db'}
             >
-              Cancel
-            </button>
+              <option value="short">Short (15-20 minutes)</option>
+              <option value="standard">Standard (30-45 minutes)</option>
+              <option value="extended">Extended (60+ minutes)</option>
+            </select>
+          </div>
+
+          {/* Intensity */}
+          <div style={{ marginBottom: '20px' }}>
+            <label style={{
+              display: 'block',
+              fontSize: '14px',
+              fontWeight: '500',
+              color: '#374151',
+              marginBottom: '8px'
+            }}>
+              Therapeutic Intensity
+            </label>
+            <select
+              value={formData.intensity}
+              onChange={(e) => setFormData(prev => ({ ...prev, intensity: e.target.value }))}
+              style={{
+                width: '100%',
+                padding: '12px',
+                border: '1px solid #d1d5db',
+                borderRadius: '6px',
+                fontSize: '16px',
+                outline: 'none',
+                boxSizing: 'border-box',
+                backgroundColor: creating ? '#f9fafb' : 'white',
+                cursor: creating ? 'not-allowed' : 'pointer'
+              }}
+              disabled={creating}
+              onFocus={(e) => e.target.style.borderColor = '#3b82f6'}
+              onBlur={(e) => e.target.style.borderColor = '#d1d5db'}
+            >
+              <option value="gentle">Gentle (Slow pace, comfort focus)</option>
+              <option value="moderate">Moderate (Balanced approach)</option>
+              <option value="intensive">Intensive (Deep work, faster pace)</option>
+            </select>
+          </div>
+
+          {/* Error Message */}
+          {error && (
+            <div style={{
+              color: '#dc2626',
+              fontSize: '14px',
+              textAlign: 'center',
+              marginBottom: '20px',
+              padding: '10px',
+              backgroundColor: '#fef2f2',
+              border: '1px solid #fecaca',
+              borderRadius: '6px'
+            }}>
+              {error}
+            </div>
           )}
-          <button
-            type="submit"
-            disabled={creating}
-            className="flex-1 px-4 py-2 text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {creating ? 'Creating...' : 'Create Profile'}
-          </button>
-        </div>
-      </form>
+
+          {/* Buttons */}
+          <div style={{
+            display: 'flex',
+            gap: '12px',
+            paddingTop: '20px'
+          }}>
+            {onCancel && (
+              <button
+                type="button"
+                onClick={() => {
+                  console.log('📋 ProfileCreationForm: Cancel button clicked');
+                  onCancel();
+                }}
+                disabled={creating}
+                style={{
+                  flex: 1,
+                  padding: '12px 24px',
+                  fontSize: '16px',
+                  fontWeight: '500',
+                  color: '#374151',
+                  backgroundColor: '#f3f4f6',
+                  border: 'none',
+                  borderRadius: '6px',
+                  cursor: creating ? 'not-allowed' : 'pointer',
+                  opacity: creating ? 0.6 : 1,
+                  transition: 'background-color 0.2s'
+                }}
+                onMouseOver={(e) => {
+                  if (!creating) e.target.style.backgroundColor = '#e5e7eb';
+                }}
+                onMouseOut={(e) => {
+                  if (!creating) e.target.style.backgroundColor = '#f3f4f6';
+                }}
+              >
+                Cancel
+              </button>
+            )}
+            <button
+              type="submit"
+              disabled={creating}
+              style={{
+                flex: 1,
+                padding: '12px 24px',
+                fontSize: '16px',
+                fontWeight: '500',
+                color: 'white',
+                backgroundColor: creating ? '#9ca3af' : '#2563eb',
+                border: 'none',
+                borderRadius: '6px',
+                cursor: creating ? 'not-allowed' : 'pointer',
+                transition: 'background-color 0.2s'
+              }}
+              onMouseOver={(e) => {
+                if (!creating) e.target.style.backgroundColor = '#1d4ed8';
+              }}
+              onMouseOut={(e) => {
+                if (!creating) e.target.style.backgroundColor = '#2563eb';
+              }}
+            >
+              {creating ? 'Creating...' : 'Create Profile'}
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   );
 }
 
-// Example App Integration - WITH COMPREHENSIVE DEBUG LOGGING
+// Example App Integration - FIXED: Using inline styles instead of Tailwind
 export function AppWithProfileGuard({ userUUID, children }) {
   console.log('🎯 AppWithProfileGuard: Component rendered with props:', {
     userUUID,
@@ -423,31 +640,53 @@ export function AppWithProfileGuard({ userUUID, children }) {
   if (showProfileCreation) {
     console.log('📋 AppWithProfileGuard: Rendering ProfileCreationForm');
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <ProfileCreationForm
-          userUUID={userUUID}
-          onProfileCreated={handleProfileCreated}
-          onCancel={() => {
-            console.log('📋 AppWithProfileGuard: ProfileCreationForm cancelled');
-            setShowProfileCreation(false);
-          }}
-        />
-      </div>
+      <ProfileCreationForm
+        userUUID={userUUID}
+        onProfileCreated={handleProfileCreated}
+        onCancel={() => {
+          console.log('📋 AppWithProfileGuard: ProfileCreationForm cancelled');
+          setShowProfileCreation(false);
+        }}
+      />
     );
   }
 
   if (showSetupCompletion) {
     console.log('🔧 AppWithProfileGuard: Rendering setup completion form');
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <p>Setup completion form would go here</p>
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        minHeight: '100vh',
+        backgroundColor: '#f8f9fa',
+        fontFamily: 'system-ui, -apple-system, sans-serif'
+      }}>
+        <div style={{ textAlign: 'center', padding: '40px' }}>
+          <p style={{
+            fontSize: '18px',
+            color: '#333',
+            marginBottom: '20px'
+          }}>
+            Setup completion form would go here
+          </p>
           <button
             onClick={() => {
               console.log('🔧 AppWithProfileGuard: Setup completion cancelled');
               setShowSetupCompletion(false);
             }}
-            className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-md"
+            style={{
+              marginTop: '16px',
+              padding: '12px 24px',
+              fontSize: '16px',
+              backgroundColor: '#2563eb',
+              color: 'white',
+              border: 'none',
+              borderRadius: '6px',
+              cursor: 'pointer'
+            }}
+            onMouseOver={(e) => e.target.style.backgroundColor = '#1d4ed8'}
+            onMouseOut={(e) => e.target.style.backgroundColor = '#2563eb'}
           >
             Back
           </button>
@@ -477,11 +716,37 @@ export function AppWithProfileGuard({ userUUID, children }) {
   } catch (error) {
     console.error('🚨 AppWithProfileGuard: Error creating AuthProfileGuard:', error);
     return (
-      <div className="min-h-screen bg-red-50 flex items-center justify-center">
-        <div className="text-center">
-          <p className="text-red-600 mb-4">Error in Profile Guard</p>
-          <p className="text-gray-600">Check console for details</p>
-          <p className="text-sm text-gray-500 mt-2">UserUUID: {userUUID}</p>
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        minHeight: '100vh',
+        backgroundColor: '#fef2f2',
+        fontFamily: 'system-ui, -apple-system, sans-serif'
+      }}>
+        <div style={{ textAlign: 'center', padding: '40px' }}>
+          <p style={{
+            color: '#dc2626',
+            fontSize: '18px',
+            fontWeight: '600',
+            marginBottom: '16px'
+          }}>
+            Error in Profile Guard
+          </p>
+          <p style={{
+            color: '#6b7280',
+            fontSize: '16px',
+            marginBottom: '8px'
+          }}>
+            Check console for details
+          </p>
+          <p style={{
+            fontSize: '14px',
+            color: '#9ca3af',
+            marginTop: '8px'
+          }}>
+            UserUUID: {userUUID}
+          </p>
         </div>
       </div>
     );
