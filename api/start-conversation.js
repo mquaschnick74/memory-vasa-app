@@ -1,5 +1,5 @@
 // /api/start-conversation.js - API endpoint to start ElevenLabs conversation
-import { registerConversation } from '../lib/serverDb.js';
+const { registerConversation } = require('../lib/serverDb.js');
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
