@@ -1,10 +1,10 @@
 // /api/webhook.js - Server-side webhook handler for Vercel
-import { 
+const { 
   getUserFromConversation, 
   storeConversationMapping, 
   storeConversationData, 
   getConversationHistory 
-} from '../lib/serverDb.js';
+} = require('../lib/serverDb.js');
 
 export default async function handler(req, res) {
   // Only allow POST requests
