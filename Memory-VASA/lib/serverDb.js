@@ -1,26 +1,26 @@
-// lib/serverDb.js - Fixed for CommonJS compatibility
-const admin = require('firebase-admin'); // CHANGED: import -> require
+// lib/serverDb.js - ES Modules version for Vite project
+import admin from 'firebase-admin';
 
 // Initialize Firebase Admin SDK (server-side)
 if (!admin.apps.length) {
-  admin.initializeApp({
-    credential: admin.credential.cert({
-      projectId: process.env.FIREBASE_PROJECT_ID,
-      clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-      privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
-    }),
-    databaseURL: `https://${process.env.FIREBASE_PROJECT_ID}.firebaseio.com`
-  });
+  try {
+    admin.initializeApp({
+      credential: admin.credential.cert({
+        projectId: process.env.FIREBASE_PROJECT_ID,
+        clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+        privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
+      }),
+      databaseURL: `https://${process.env.FIREBASE_PROJECT_ID}.firebaseio.com`
+    });
+  } catch (error) {
+    console.error('Firebase Admin initialization error:', error);
+  }
 }
 
 const db = admin.firestore();
 
-// ============================================================================
-// CONVERSATION MAPPINGS (for ElevenLabs webhook user identification)
-// ============================================================================
-
 // Store or update conversation ID to user UUID mapping
-const storeConversationMapping = async (conversationId, userUUID) => {
+export const storeConversationMapping = async (conversationId, userUUID) => {
   try {
     const mappingRef = db.collection('conversation_mappings').doc(conversationId);
     
@@ -41,7 +41,7 @@ const storeConversationMapping = async (conversationId, userUUID) => {
 };
 
 // Get user UUID from conversation ID
-const getUserFromConversation = async (conversationId) => {
+export const getUserFromConversation = async (conversationId) => {
   try {
     if (!conversationId) {
       return null;
@@ -66,7 +66,7 @@ const getUserFromConversation = async (conversationId) => {
 };
 
 // Register a new conversation when starting with ElevenLabs
-const registerConversation = async (userUUID, conversationId, additionalData = {}) => {
+export const registerConversation = async (userUUID, conversationId, additionalData = {}) => {
   try {
     if (!userUUID || !conversationId) {
       throw new Error('User UUID and conversation ID are required');
@@ -102,7 +102,7 @@ const registerConversation = async (userUUID, conversationId, additionalData = {
 };
 
 // Store conversation data in the user_context collection
-const storeConversationData = async (userUUID, data) => {
+export const storeConversationData = async (userUUID, data) => {
   try {
     const contextId = `webhook_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     
@@ -142,7 +142,7 @@ const storeConversationData = async (userUUID, data) => {
 };
 
 // Get conversation history for VASA context
-const getConversationHistory = async (userUUID, limit = 20) => {
+export const getConversationHistory = async (userUUID, limit = 20) => {
   try {
     const contextRef = db.collection('users').doc(userUUID).collection('user_context');
     const snapshot = await contextRef
@@ -167,13 +167,4 @@ const getConversationHistory = async (userUUID, limit = 20) => {
     console.error('❌ Failed to get conversation history:', error);
     return [];
   }
-};
-
-// CHANGED: Export using module.exports instead of export
-module.exports = {
-  storeConversationMapping,
-  getUserFromConversation,
-  registerConversation,
-  storeConversationData,
-  getConversationHistory
 };
