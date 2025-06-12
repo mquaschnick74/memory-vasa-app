@@ -1,5 +1,5 @@
 // /api/start-conversation.js - API endpoint to start ElevenLabs conversation
-import { registerConversation } from '../lib/conversationManager.js';
+import { registerConversation } from '../lib/serverDb.js';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -57,38 +57,3 @@ export default async function handler(req, res) {
     });
   }
 }
-
-// Example usage in your frontend/client code:
-/*
-async function startTherapySession(userUUID) {
-  try {
-    const response = await fetch('/api/start-conversation', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        userUUID: userUUID,
-        agentId: 'your-agent-id' // optional, will use default if not provided
-      })
-    });
-
-    const result = await response.json();
-    
-    if (result.success) {
-      console.log('Conversation started:', result.conversation_id);
-      
-      // Now you can use the conversation_id with ElevenLabs SDK
-      // The webhook will be able to map messages back to the user
-      
-      return result.conversation_id;
-    } else {
-      throw new Error(result.error);
-    }
-    
-  } catch (error) {
-    console.error('Failed to start conversation:', error);
-    throw error;
-  }
-}
-*/
