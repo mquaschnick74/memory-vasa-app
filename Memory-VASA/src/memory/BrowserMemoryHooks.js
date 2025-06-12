@@ -655,6 +655,160 @@ class BrowserMemoryHooks {
       return { success: false, error: error.message };
     }
   }
+
+  // MISSING METHOD: Add this to fix the conversation context injection
+  async getConversationContext(userUUID, limit = 10) {
+    try {
+      if (!userUUID) {
+        console.warn('❌ No userUUID provided to getConversationContext');
+        return null;
+      }
+
+      // Get recent conversations from Firebase using existing method
+      const conversationResult = await this.getConversationHistory(userUUID, limit);
+      
+      if (!conversationResult.conversations || conversationResult.conversations.length === 0) {
+        console.log('ℹ️ No conversation history found for context generation');
+        return null;
+      }
+
+      const conversations = conversationResult.conversations;
+      
+      // Extract all messages from conversation threads
+      const allMessages = [];
+      conversations.forEach(conv => {
+        if (conv.conversation_thread && conv.conversation_thread.length > 0) {
+          conv.conversation_thread.forEach(thread => {
+            allMessages.push({
+              sender: thread.sender,
+              message: thread.message,
+              timestamp: thread.timestamp,
+              stage: conv.current_stage || 'unknown'
+            });
+          });
+        }
+      });
+
+      // Sort messages by timestamp
+      allMessages.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+
+      // Generate conversation summary from actual messages
+      const summary = this.generateConversationSummary(allMessages);
+      
+      console.log('✅ Generated conversation context summary:', summary);
+      
+      return {
+        summary,
+        messageCount: allMessages.length,
+        conversationCount: conversations.length,
+        lastSession: conversations[0]?.created_at || new Date(),
+        recentMessages: allMessages.slice(-5) // Last 5 messages for immediate context
+      };
+      
+    } catch (error) {
+      console.error('❌ Failed to get conversation context:', error);
+      return null;
+    }
+  }
+
+  // Helper method to generate meaningful summaries from actual conversation data
+  generateConversationSummary(messages) {
+    if (!messages || messages.length === 0) {
+      return "No previous conversation history available.";
+    }
+
+    // Separate user and assistant messages
+    const userMessages = messages.filter(msg => msg.sender === 'user');
+    const assistantMessages = messages.filter(msg => msg.sender === 'assistant' || msg.sender === 'system');
+
+    // Extract key topics from user messages
+    const userTopics = [];
+    const therapeuticPatterns = [];
+    
+    userMessages.forEach(msg => {
+      const content = msg.message.toLowerCase();
+      
+      // Extract specific topics mentioned by user
+      if (content.includes('happiness') || content.includes('happy')) {
+        userTopics.push('happiness and emotional well-being');
+      }
+      if (content.includes('work') || content.includes('job')) {
+        userTopics.push('work-related concerns');
+      }
+      if (content.includes('relationship') || content.includes('family')) {
+        userTopics.push('relationship dynamics');
+      }
+      if (content.includes('external') || content.includes('validate')) {
+        therapeuticPatterns.push('seeking external validation');
+      }
+      if (content.includes('anxiety') || content.includes('worry')) {
+        userTopics.push('anxiety and worry patterns');
+      }
+      if (content.includes('control') || content.includes('manage')) {
+        therapeuticPatterns.push('control and management themes');
+      }
+    });
+
+    // Extract therapeutic insights from assistant messages
+    const therapeuticInsights = [];
+    assistantMessages.forEach(msg => {
+      const content = msg.message.toLowerCase();
+      
+      if (content.includes('contradiction') || content.includes('cvdc')) {
+        therapeuticInsights.push('exploring contradictions and tensions');
+      }
+      if (content.includes('integration') || content.includes('cyvc')) {
+        therapeuticInsights.push('working toward integration');
+      }
+      if (content.includes('fragmentation') || content.includes('pattern')) {
+        therapeuticInsights.push('identifying fragmentation patterns');
+      }
+    });
+
+    // Build comprehensive summary
+    let summary = `In our previous session(s), we explored several important themes:\n\n`;
+    
+    if (userTopics.length > 0) {
+      summary += `**Key Topics Discussed:**\n`;
+      userTopics.forEach(topic => summary += `- ${topic}\n`);
+      summary += `\n`;
+    }
+
+    if (therapeuticPatterns.length > 0) {
+      summary += `**Therapeutic Patterns Identified:**\n`;
+      therapeuticPatterns.forEach(pattern => summary += `- ${pattern}\n`);
+      summary += `\n`;
+    }
+
+    if (therapeuticInsights.length > 0) {
+      summary += `**Therapeutic Work Completed:**\n`;
+      therapeuticInsights.forEach(insight => summary += `- ${insight}\n`);
+      summary += `\n`;
+    }
+
+    // Add specific recent context
+    const recentUserMessages = userMessages.slice(-3);
+    if (recentUserMessages.length > 0) {
+      summary += `**Most Recent User Expressions:**\n`;
+      recentUserMessages.forEach(msg => {
+        summary += `- "${msg.message.substring(0, 100)}${msg.message.length > 100 ? '...' : ''}"\n`;
+      });
+    }
+
+    // If we have specific content, provide specific summary
+    if (userTopics.length === 0 && therapeuticPatterns.length === 0) {
+      // Fallback to more generic but still specific summary
+      const lastFewMessages = messages.slice(-6);
+      summary = `Based on our recent conversation, we were discussing:\n\n`;
+      lastFewMessages.forEach((msg, index) => {
+        if (msg.sender === 'user') {
+          summary += `You mentioned: "${msg.message.substring(0, 120)}${msg.message.length > 120 ? '...' : ''}"\n\n`;
+        }
+      });
+    }
+
+    return summary;
+  }
 }
 
 // React hooks for using BrowserMemoryHooks in components
