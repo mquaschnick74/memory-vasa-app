@@ -35,7 +35,7 @@ class BrowserMemoryHooks {
         {
           message: "Welcome to your Memory VASA therapeutic journey. We'll guide you through the Core Symbol Set process starting with the Pointed Origin stage (Ⓞ) to identify your fragmentation patterns.",
           sender: 'assistant',
-          timestamp: new Date(), // ✅ Use new Date() instead of serverTimestamp()
+          timestamp: new Date(),
           message_type: 'text',
           stage_focus: 'journey_orientation'
         }
@@ -87,7 +87,7 @@ class BrowserMemoryHooks {
           {
             message: conversationData.content || conversationData.message,
             sender: conversationData.type === 'user' ? 'user' : 'assistant',
-            timestamp: new Date(), // ✅ Use new Date() instead of serverTimestamp()
+            timestamp: new Date(),
             message_type: conversationData.message_type || 'text',
             stage_focus: this.getStageFocus(stage, conversationData.type)
           }
@@ -120,7 +120,7 @@ class BrowserMemoryHooks {
     }
   }
 
-  // Get current stage helper
+  // FIXED: Get current stage helper with proper error handling
   async getCurrentStage(userUUID) {
     try {
       const stageProgressionsRef = collection(this.db, 'users', userUUID, 'stage_progressions');
@@ -137,7 +137,7 @@ class BrowserMemoryHooks {
       // Find first uncompleted stage, sorted by level
       const currentStage = stages
         .filter(stage => !stage.completed)
-        .sort((a, b) => a.stage_level - b.stage_level)[0];
+        .sort((a, b) => (a.stage_level || 0) - (b.stage_level || 0))[0];
       
       return currentStage || null;
     } catch (error) {
@@ -440,9 +440,18 @@ class BrowserMemoryHooks {
     }
   }
 
-  // Retrieve conversation history (with user check)
-  async getConversationHistory(userUUID, limit = 20) {
+  // FIXED: Retrieve conversation history with proper error handling
+  async getConversationHistory(userUUID, limitCount = 20) {
     try {
+      if (!userUUID) {
+        console.warn('❌ No userUUID provided to getConversationHistory');
+        return {
+          conversations: [],
+          requires_profile_creation: true,
+          message: 'UserUUID is required'
+        };
+      }
+
       // First check if user exists
       const userCheck = await this.checkUserProfile(userUUID);
       if (!userCheck.exists) {
@@ -454,21 +463,30 @@ class BrowserMemoryHooks {
         };
       }
 
+      // Get user context collection
       const userContextRef = collection(this.db, 'users', userUUID, 'user_context');
-      const q = query(
+      
+      // Create query with proper ordering and limit
+      const conversationQuery = query(
         userContextRef,
         orderBy('created_at', 'desc'),
-        limit(limit)
+        limit(limitCount)
       );
       
-      const querySnapshot = await getDocs(q);
+      // Execute query with error handling
+      const querySnapshot = await getDocs(conversationQuery);
       const conversations = [];
       
-      querySnapshot.forEach((doc) => {
-        conversations.push({
-          id: doc.id,
-          ...doc.data()
-        });
+      querySnapshot.forEach((docSnapshot) => {
+        try {
+          const data = docSnapshot.data();
+          conversations.push({
+            id: docSnapshot.id,
+            ...data
+          });
+        } catch (docError) {
+          console.warn('❌ Error reading document:', docSnapshot.id, docError);
+        }
       });
       
       console.log(`✅ Retrieved ${conversations.length} conversation messages from user_context`);
@@ -480,13 +498,23 @@ class BrowserMemoryHooks {
       console.error('❌ Failed to get conversation history:', error);
       
       // Fallback to localStorage
-      const storageKey = `memory_vasa_${userUUID}`;
-      const localData = JSON.parse(localStorage.getItem(storageKey) || '[]');
-      return {
-        conversations: localData.slice(-limit),
-        requires_profile_creation: false,
-        source: 'localStorage_fallback'
-      };
+      try {
+        const storageKey = `memory_vasa_${userUUID}`;
+        const localData = JSON.parse(localStorage.getItem(storageKey) || '[]');
+        console.log(`✅ Fallback: Retrieved ${localData.length} conversations from localStorage`);
+        return {
+          conversations: localData.slice(-limitCount),
+          requires_profile_creation: false,
+          source: 'localStorage_fallback'
+        };
+      } catch (localError) {
+        console.error('❌ Failed to read from localStorage fallback:', localError);
+        return {
+          conversations: [],
+          requires_profile_creation: false,
+          error: error.message
+        };
+      }
     }
   }
 
@@ -494,8 +522,8 @@ class BrowserMemoryHooks {
   async updateStageProgression(userUUID, stageName, progressData) {
     try {
       const stageProgressionsRef = collection(this.db, 'users', userUUID, 'stage_progressions');
-      const q = query(stageProgressionsRef, where('stage_name', '==', stageName));
-      const querySnapshot = await getDocs(q);
+      const stageQuery = query(stageProgressionsRef, where('stage_name', '==', stageName));
+      const querySnapshot = await getDocs(stageQuery);
       
       if (!querySnapshot.empty) {
         const stageDoc = querySnapshot.docs[0];
