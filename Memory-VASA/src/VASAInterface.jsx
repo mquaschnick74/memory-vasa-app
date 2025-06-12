@@ -44,6 +44,33 @@ const VASAInterface = () => {
     context
   } = useConversationContext(userUUID);
 
+  // 🆕 ADD THIS: Function to retrieve stored context from Firebase
+  const retrieveStoredContext = async (userUUID, conversationId) => {
+    try {
+      const response = await fetch('/api/get-conversation-context', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_id: userUUID,
+          conversation_id: conversationId,
+          limit: 20
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to retrieve context');
+      }
+
+      const data = await response.json();
+      console.log('✅ Retrieved stored context from Firebase:', data);
+      
+      return data.context_summary || '';
+    } catch (error) {
+      console.error('❌ Failed to retrieve stored context:', error);
+      return '';
+    }
+  };
+
   // 🆕 FIXED: Logout function with correct auth service usage
   const handleLogout = async () => {
     setIsLoggingOut(true);
@@ -108,17 +135,33 @@ const VASAInterface = () => {
     return detectedStage;
   };
 
-  // Inject conversation context when connecting to VASA
+  // 🆕 UPDATED: Inject conversation context when connecting to VASA
   const injectConversationContext = async () => {
     try {
       if (!userUUID) return;
 
+      // First, get stored context from Firebase
+      const storedContext = await retrieveStoredContext(userUUID, conversation?.conversationId);
+      
+      // Then, get current session context from browser memory
       const contextData = await getBrowserMemoryManager().getConversationContext(userUUID, 10);
+      
+      // Combine both contexts
+      let fullContext = '';
+      
+      if (storedContext) {
+        fullContext += `Previous Sessions: ${storedContext}\n\n`;
+      }
+      
       if (contextData && contextData.summary) {
-        console.log('🧠 Injecting conversation context:', contextData.summary);
+        fullContext += `Recent Context: ${contextData.summary}`;
+      }
+
+      if (fullContext.trim()) {
+        console.log('🧠 Injecting full conversation context:', fullContext);
 
         // Create a more natural context injection that VASA should respond to
-        const contextMessage = `Hi VASA, we've spoken before. ${contextData.summary} I'd like to continue our symbolic work from where we left off.`;
+        const contextMessage = `Hi VASA, we've spoken before. ${fullContext.trim()} I'd like to continue our symbolic work from where we left off.`;
 
         // Send context as the first user message immediately after connection
         setTimeout(async () => {
@@ -166,6 +209,25 @@ const VASAInterface = () => {
     onConnect: async () => {
       console.log('Connected to VASA');
       setButtonState('connected');
+
+      // 🆕 ADD THIS: Register conversation with backend for webhook tracking
+      try {
+        const response = await fetch('/api/start-conversation', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            userUUID, 
+            agentId,
+            conversationId: conversation?.conversationId 
+          })
+        });
+        
+        if (response.ok) {
+          console.log('✅ Conversation registered with backend for webhooks');
+        }
+      } catch (error) {
+        console.warn('Failed to register conversation with backend:', error);
+      }
 
       // Inject conversation history context when connecting
       await injectConversationContext();
