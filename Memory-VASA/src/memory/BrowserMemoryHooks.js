@@ -711,105 +711,90 @@ class BrowserMemoryHooks {
     }
   }
 
-  // Helper method to generate meaningful summaries from actual conversation data
+// IMPROVED: Helper method to generate more specific, conversational summaries
   generateConversationSummary(messages) {
     if (!messages || messages.length === 0) {
       return "No previous conversation history available.";
     }
 
-    // Separate user and assistant messages
+    // Get the most recent user messages (last 5)
     const userMessages = messages.filter(msg => msg.sender === 'user');
+    const recentUserMessages = userMessages.slice(-5);
+    
+    // Get the most recent assistant messages to understand therapeutic direction
     const assistantMessages = messages.filter(msg => msg.sender === 'assistant' || msg.sender === 'system');
+    const recentAssistantMessages = assistantMessages.slice(-3);
 
-    // Extract key topics from user messages
-    const userTopics = [];
-    const therapeuticPatterns = [];
+    // Build a conversational, specific summary
+    let summary = '';
     
-    userMessages.forEach(msg => {
-      const content = msg.message.toLowerCase();
-      
-      // Extract specific topics mentioned by user
-      if (content.includes('happiness') || content.includes('happy')) {
-        userTopics.push('happiness and emotional well-being');
-      }
-      if (content.includes('work') || content.includes('job')) {
-        userTopics.push('work-related concerns');
-      }
-      if (content.includes('relationship') || content.includes('family')) {
-        userTopics.push('relationship dynamics');
-      }
-      if (content.includes('external') || content.includes('validate')) {
-        therapeuticPatterns.push('seeking external validation');
-      }
-      if (content.includes('anxiety') || content.includes('worry')) {
-        userTopics.push('anxiety and worry patterns');
-      }
-      if (content.includes('control') || content.includes('manage')) {
-        therapeuticPatterns.push('control and management themes');
-      }
-    });
-
-    // Extract therapeutic insights from assistant messages
-    const therapeuticInsights = [];
-    assistantMessages.forEach(msg => {
-      const content = msg.message.toLowerCase();
-      
-      if (content.includes('contradiction') || content.includes('cvdc')) {
-        therapeuticInsights.push('exploring contradictions and tensions');
-      }
-      if (content.includes('integration') || content.includes('cyvc')) {
-        therapeuticInsights.push('working toward integration');
-      }
-      if (content.includes('fragmentation') || content.includes('pattern')) {
-        therapeuticInsights.push('identifying fragmentation patterns');
-      }
-    });
-
-    // Build comprehensive summary
-    let summary = `In our previous session(s), we explored several important themes:\n\n`;
-    
-    if (userTopics.length > 0) {
-      summary += `**Key Topics Discussed:**\n`;
-      userTopics.forEach(topic => summary += `- ${topic}\n`);
-      summary += `\n`;
-    }
-
-    if (therapeuticPatterns.length > 0) {
-      summary += `**Therapeutic Patterns Identified:**\n`;
-      therapeuticPatterns.forEach(pattern => summary += `- ${pattern}\n`);
-      summary += `\n`;
-    }
-
-    if (therapeuticInsights.length > 0) {
-      summary += `**Therapeutic Work Completed:**\n`;
-      therapeuticInsights.forEach(insight => summary += `- ${insight}\n`);
-      summary += `\n`;
-    }
-
-    // Add specific recent context
-    const recentUserMessages = userMessages.slice(-3);
+    // Start with the most recent specific user expressions
     if (recentUserMessages.length > 0) {
-      summary += `**Most Recent User Expressions:**\n`;
-      recentUserMessages.forEach(msg => {
-        summary += `- "${msg.message.substring(0, 100)}${msg.message.length > 100 ? '...' : ''}"\n`;
-      });
+      summary += `In our recent conversations, you specifically mentioned: `;
+      
+      // Include actual quotes from the user
+      const quotes = recentUserMessages.map(msg => `"${msg.message}"`);
+      
+      if (quotes.length === 1) {
+        summary += quotes[0];
+      } else if (quotes.length === 2) {
+        summary += `${quotes[0]} and ${quotes[1]}`;
+      } else {
+        summary += quotes.slice(0, -1).join(', ') + `, and ${quotes[quotes.length - 1]}`;
+      }
+      
+      summary += '. ';
     }
 
-    // If we have specific content, provide specific summary
-    if (userTopics.length === 0 && therapeuticPatterns.length === 0) {
-      // Fallback to more generic but still specific summary
-      const lastFewMessages = messages.slice(-6);
-      summary = `Based on our recent conversation, we were discussing:\n\n`;
-      lastFewMessages.forEach((msg, index) => {
-        if (msg.sender === 'user') {
-          summary += `You mentioned: "${msg.message.substring(0, 120)}${msg.message.length > 120 ? '...' : ''}"\n\n`;
+    // Add therapeutic context based on content analysis
+    const allUserText = userMessages.map(msg => msg.message.toLowerCase()).join(' ');
+    
+    if (allUserText.includes('external') && allUserText.includes('happiness')) {
+      summary += `We were exploring your pattern of externalizing happiness and how this relates to seeking validation from others, particularly your wife. `;
+    } else if (allUserText.includes('validation') || allUserText.includes('acknowledge')) {
+      summary += `We were working on your need for external validation and how it affects your emotional well-being. `;
+    } else if (allUserText.includes('happiness') || allUserText.includes('happy')) {
+      summary += `We were discussing your relationship with happiness and what influences your emotional state. `;
+    } else if (allUserText.includes('work')) {
+      summary += `We were examining your work-related concerns and their impact on your well-being. `;
+    }
+
+    // Add therapeutic stage context if relevant
+    if (recentAssistantMessages.some(msg => msg.message.toLowerCase().includes('contradiction'))) {
+      summary += `We had begun exploring the contradictions and tensions in these patterns. `;
+    }
+    
+    if (recentAssistantMessages.some(msg => msg.message.toLowerCase().includes('fragmentation'))) {
+      summary += `We identified some fragmentation patterns in how you experience these situations. `;
+    }
+
+    // Add a specific therapeutic direction based on the last exchange
+    if (recentUserMessages.length > 0) {
+      const lastUserMessage = recentUserMessages[recentUserMessages.length - 1].message.toLowerCase();
+      
+      if (lastUserMessage.includes('specific') || lastUserMessage.includes('tell me')) {
+        summary += `You were asking for more specific insights about these patterns we've been uncovering together.`;
+      } else if (lastUserMessage.includes('external') || lastUserMessage.includes('happiness')) {
+        summary += `You were wanting to dive deeper into how you externalize your happiness and what this means for your relationships.`;
+      } else {
+        summary += `You were ready to continue exploring these themes in more depth.`;
+      }
+    }
+
+    // If no specific content, create summary from actual recent messages
+    if (summary.length < 100 && recentUserMessages.length > 0) {
+      summary = `Based on our recent therapeutic work, you shared these specific concerns: `;
+      recentUserMessages.slice(-3).forEach((msg, index) => {
+        summary += `"${msg.message.substring(0, 150)}${msg.message.length > 150 ? '...' : ''}"`;
+        if (index < recentUserMessages.slice(-3).length - 1) {
+          summary += ', and then ';
         }
       });
+      summary += '. Let\'s continue from where we left off with these specific themes.';
     }
 
     return summary;
   }
-}
 
 // React hooks for using BrowserMemoryHooks in components
 import { useState, useEffect, useCallback, useMemo } from 'react';
