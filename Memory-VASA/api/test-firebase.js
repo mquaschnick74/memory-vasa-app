@@ -1,87 +1,134 @@
-// /api/test-firebase.js - Test Firebase connection and data storage
-import { 
-  storeConversationMapping, 
-  getUserFromConversation,
-  storeConversationData,
-  getConversationHistory 
-} from '../lib/serverDb.js';
+// Add this debug code to your client-side JavaScript
 
-export default async function handler(req, res) {
-  if (req.method !== 'GET') {
-    return res.status(405).json({ error: 'Method not allowed' });
-  }
-
-  const testResults = {
-    firebaseConnection: false,
-    storeMapping: false,
-    retrieveMapping: false,
-    storeData: false,
-    retrieveHistory: false,
-    errors: []
-  };
-
+// Enhanced error tracking for the start-conversation endpoint
+async function debugStartConversation(userUUID) {
+  console.log('🐛 DEBUG: Starting conversation debug test...');
+  console.log('🐛 User UUID:', userUUID);
+  
   try {
-    // Test 1: Store a test mapping
-    const testConversationId = `test-conv-${Date.now()}`;
-    const testUserUUID = 'test-user-123';
-
-    try {
-      await storeConversationMapping(testConversationId, testUserUUID);
-      testResults.storeMapping = true;
-      console.log('✅ Test 1 passed: Store mapping');
-    } catch (error) {
-      testResults.errors.push(`Store mapping: ${error.message}`);
+    // Test Firebase connectivity first
+    console.log('🐛 Testing Firebase connection...');
+    const firebaseTest = await fetch('/api/test-firebase');
+    const firebaseResult = await firebaseTest.json();
+    
+    console.log('🐛 Firebase test result:', firebaseResult);
+    
+    if (!firebaseResult.success) {
+      console.error('❌ Firebase test failed:', firebaseResult);
+      return { error: 'Firebase connection failed', details: firebaseResult };
     }
-
-    // Test 2: Retrieve the mapping
-    try {
-      const retrievedUser = await getUserFromConversation(testConversationId);
-      testResults.retrieveMapping = retrievedUser === testUserUUID;
-      console.log('✅ Test 2 passed: Retrieve mapping');
-    } catch (error) {
-      testResults.errors.push(`Retrieve mapping: ${error.message}`);
-    }
-
-    // Test 3: Store conversation data
-    try {
-      await storeConversationData(testUserUUID, {
-        message: { content: 'Test message', role: 'user' },
-        message_type: 'user_message',
-        conversation_id: testConversationId,
-        agent_id: 'test-agent',
-        timestamp: new Date().toISOString()
-      });
-      testResults.storeData = true;
-      console.log('✅ Test 3 passed: Store conversation data');
-    } catch (error) {
-      testResults.errors.push(`Store data: ${error.message}`);
-    }
-
-    // Test 4: Retrieve conversation history
-    try {
-      const history = await getConversationHistory(testUserUUID, 10);
-      testResults.retrieveHistory = history.length > 0;
-      console.log('✅ Test 4 passed: Retrieve history');
-    } catch (error) {
-      testResults.errors.push(`Retrieve history: ${error.message}`);
-    }
-
-    // Overall Firebase connection
-    testResults.firebaseConnection = testResults.storeMapping || testResults.storeData;
-
-    return res.status(200).json({
-      success: true,
-      message: 'Firebase connection test completed',
-      results: testResults,
-      timestamp: new Date().toISOString()
+    
+    // Now test start-conversation
+    console.log('🐛 Testing start-conversation endpoint...');
+    const response = await fetch('/api/start-conversation', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        userUUID: userUUID,
+        conversationData: {
+          user_name: 'Debug Test User',
+          source: 'debug_test'
+        },
+        agentConfig: {
+          agent_id: 'debug-test-agent'
+        }
+      })
     });
-
+    
+    console.log('🐛 Response status:', response.status);
+    console.log('🐛 Response headers:', Object.fromEntries(response.headers.entries()));
+    
+    const responseText = await response.text();
+    console.log('🐛 Raw response:', responseText);
+    
+    let responseData;
+    try {
+      responseData = JSON.parse(responseText);
+    } catch (parseError) {
+      console.error('❌ Failed to parse response as JSON:', parseError);
+      return { 
+        error: 'Invalid JSON response', 
+        status: response.status, 
+        rawResponse: responseText 
+      };
+    }
+    
+    if (response.ok) {
+      console.log('✅ Start conversation successful:', responseData);
+      return { success: true, data: responseData };
+    } else {
+      console.error('❌ Start conversation failed:', responseData);
+      return { 
+        error: 'API error', 
+        status: response.status, 
+        data: responseData 
+      };
+    }
+    
   } catch (error) {
-    return res.status(500).json({
-      success: false,
-      error: 'Firebase test failed',
-      details: error.message,
-      results: testResults
-    });
+    console.error('❌ Debug test failed:', error);
+    return { 
+      error: 'Network or execution error', 
+      message: error.message,
+      stack: error.stack 
+    };
   }
 }
+
+// Enhanced error tracking for your existing connection code
+function enhanceExistingErrorHandling() {
+  // Add this to your existing onConnect function or wherever the error occurs
+  
+  // Wrap your existing fetch call like this:
+  const originalFetch = window.fetch;
+  window.fetch = async function(url, options) {
+    console.log('🐛 Fetch called:', url, options);
+    
+    try {
+      const response = await originalFetch(url, options);
+      
+      if (!response.ok) {
+        console.error('❌ Fetch failed:', {
+          url,
+          status: response.status,
+          statusText: response.statusText,
+          headers: Object.fromEntries(response.headers.entries())
+        });
+        
+        // Try to get response body for debugging
+        const responseClone = response.clone();
+        try {
+          const responseText = await responseClone.text();
+          console.error('❌ Response body:', responseText);
+        } catch (bodyError) {
+          console.error('❌ Could not read response body:', bodyError);
+        }
+      }
+      
+      return response;
+    } catch (error) {
+      console.error('❌ Fetch network error:', {
+        url,
+        error: error.message,
+        stack: error.stack
+      });
+      throw error;
+    }
+  };
+}
+
+// Call this when your app loads
+enhanceExistingErrorHandling();
+
+// Test function you can call manually
+window.debugVASA = {
+  testStartConversation: debugStartConversation,
+  testFirebase: async () => {
+    const response = await fetch('/api/test-firebase');
+    return await response.json();
+  }
+};
+
+console.log('🐛 Debug tools loaded. Use window.debugVASA.testStartConversation("your-user-id") to test');
