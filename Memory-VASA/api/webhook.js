@@ -1,9 +1,10 @@
-// File: Memory-VASA/api/webhook.js - Fixed user mapping
+// File: Memory-VASA/api/webhook.js - Session-isolated version
+
+import admin from 'firebase-admin';
 
 export default async function handler(req, res) {
   const timestamp = new Date().toISOString();
   console.log(`[${timestamp}] ========== 11LABS WEBHOOK REQUEST ==========`);
-  console.log(`[${timestamp}] Method: ${req.method}`);
   console.log(`[${timestamp}] Body:`, JSON.stringify(req.body, null, 2));
 
   // Set CORS headers
@@ -20,69 +21,58 @@ export default async function handler(req, res) {
   }
 
   try {
-    // Extract all possible user identifiers from 11Labs
     const { 
       action, 
       conversation_id, 
       agent_id, 
       user_id,
-      call_id,
-      phone_number,
-      caller_id,
-      message,
-      // These might contain user info
-      metadata,
-      custom_llm_extra_body
+      message
     } = req.body;
 
-    console.log(`[${timestamp}] 🔍 ALL user identifiers from 11Labs:`, {
-      conversation_id,
-      user_id, 
-      agent_id,
-      call_id,
-      phone_number,
-      caller_id,
-      metadata,
-      custom_llm_extra_body,
-      hasMessage: !!message
-    });
-
-    // CRITICAL: Map to your specific user
-    // Since this is your personal agent, always use your Firebase UUID
+    // Always use your specific Firebase user UUID
     const FIREBASE_USER_UUID = 'NEgpc2haPnU2ZafTt6ECEZZMpcK2';
     
-    console.log(`[${timestamp}] 🎯 Using Firebase User UUID: ${FIREBASE_USER_UUID}`);
+    console.log(`[${timestamp}] 🎯 Processing for user: ${FIREBASE_USER_UUID}`);
+    console.log(`[${timestamp}] 📞 11Labs conversation ID: ${conversation_id}`);
 
-    // Get conversation history for the CORRECT user
-    const conversationHistory = await getConversationHistoryForUser(FIREBASE_USER_UUID);
+    // Get RECENT conversation history only (last 2 hours)
+    const recentHistory = await getRecentConversationHistory(FIREBASE_USER_UUID, 2);
     
-    console.log(`[${timestamp}] 📚 Retrieved conversation history:`, {
+    console.log(`[${timestamp}] 📚 Retrieved RECENT conversation history:`, {
       userUUID: FIREBASE_USER_UUID,
-      messageCount: conversationHistory?.length || 0,
-      recentMessages: conversationHistory?.slice(-3).map(msg => ({
+      messageCount: recentHistory?.length || 0,
+      timeWindow: '2 hours',
+      recentMessages: recentHistory?.slice(-3).map(msg => ({
         type: msg.type,
-        content: msg.content?.substring(0, 100) + '...'
+        content: msg.content?.substring(0, 60) + '...',
+        timestamp: msg.timestamp
       }))
     });
 
-    // Return the CORRECT user's context
+    // Filter out any messages that don't match current conversation topics
+    const relevantHistory = filterRelevantHistory(recentHistory);
+    
+    console.log(`[${timestamp}] 🎯 Filtered relevant history:`, {
+      originalCount: recentHistory?.length || 0,
+      relevantCount: relevantHistory?.length || 0
+    });
+
+    // Return session-specific context
     const responseData = {
       success: true,
       user_uuid: FIREBASE_USER_UUID,
       conversation_id: conversation_id,
-      context: conversationHistory || [],
-      context_summary: generateContextSummary(conversationHistory),
-      timestamp: timestamp,
-      debug_info: {
-        original_11labs_data: {
-          conversation_id,
-          user_id,
-          agent_id
-        }
-      }
+      context: relevantHistory || [],
+      context_summary: generateSessionSummary(relevantHistory),
+      session_info: {
+        time_window: '2 hours',
+        total_messages: recentHistory?.length || 0,
+        relevant_messages: relevantHistory?.length || 0
+      },
+      timestamp: timestamp
     };
 
-    console.log(`[${timestamp}] ✅ Returning CORRECT user context to 11Labs`);
+    console.log(`[${timestamp}] ✅ Returning session-specific context to 11Labs`);
     return res.status(200).json(responseData);
 
   } catch (error) {
@@ -95,38 +85,64 @@ export default async function handler(req, res) {
   }
 }
 
-// Get conversation history for the specific Firebase user
-async function getConversationHistoryForUser(userUUID) {
+// Get only recent conversation history (within specified hours)
+async function getRecentConversationHistory(userUUID, hoursBack = 2) {
   try {
-    // Import your Firebase functions
-    const { getConversationHistory } = await import('../lib/serverDB.js');
+    const db = admin.firestore();
+    const cutoffTime = new Date(Date.now() - hoursBack * 60 * 60 * 1000);
     
-    console.log(`🔍 Getting conversation history for user: ${userUUID}`);
+    console.log(`🔍 Getting conversations newer than: ${cutoffTime.toISOString()}`);
     
-    const history = await getConversationHistory(userUUID);
+    const userContextRef = db.collection('users').doc(userUUID).collection('user_context');
+    const snapshot = await userContextRef
+      .where('timestamp', '>', cutoffTime.toISOString())
+      .orderBy('timestamp', 'asc')
+      .get();
     
-    console.log(`📊 Retrieved ${history?.length || 0} messages for user ${userUUID}`);
+    const history = snapshot.docs.map(doc => doc.data());
+    
+    console.log(`📊 Retrieved ${history.length} recent messages for user ${userUUID}`);
     
     return history;
   } catch (error) {
-    console.error('❌ Error getting conversation history:', error);
+    console.error('❌ Error getting recent conversation history:', error);
     return [];
   }
 }
 
-// Generate context summary from the CORRECT user's history
-function generateContextSummary(history) {
+// Filter history to only include relevant conversations
+function filterRelevantHistory(history) {
   if (!history || history.length === 0) {
-    return 'No previous conversation history available.';
+    return [];
   }
   
-  // Get only recent messages to avoid confusion
-  const recentMessages = history.slice(-5);
+  // Get only messages from the current session (last 10 messages)
+  // This prevents confusion with old conversations
+  const currentSession = history.slice(-10);
   
-  const summary = recentMessages
-    .filter(msg => msg.content && msg.content.trim().length > 0)
-    .map(msg => `${msg.type}: ${msg.content?.substring(0, 80)}`)
-    .join(' | ');
+  console.log(`🎯 Filtering to current session: ${currentSession.length} messages`);
+  
+  return currentSession;
+}
+
+// Generate summary focused on current session
+function generateSessionSummary(history) {
+  if (!history || history.length === 0) {
+    return 'No recent conversation history available for this session.';
+  }
+  
+  // Focus on user messages to understand current topics
+  const userMessages = history
+    .filter(msg => msg.type === 'user' && msg.content?.trim().length > 0)
+    .slice(-3); // Last 3 user messages only
+  
+  if (userMessages.length === 0) {
+    return 'Current session just started.';
+  }
+  
+  const topics = userMessages.map(msg => 
+    `User mentioned: "${msg.content?.substring(0, 100)}"`
+  ).join(' | ');
     
-  return `Recent context (${history.length} total messages): ${summary}`;
+  return `Current session context: ${topics}`;
 }
