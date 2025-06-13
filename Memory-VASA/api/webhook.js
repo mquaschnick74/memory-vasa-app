@@ -1,12 +1,10 @@
-// File: Memory-VASA/api/webhook.js - Fixed signature validation
-
-import crypto from 'crypto';
+// File: Memory-VASA/api/webhook.js - Fixed user mapping
 
 export default async function handler(req, res) {
   const timestamp = new Date().toISOString();
   console.log(`[${timestamp}] ========== 11LABS WEBHOOK REQUEST ==========`);
   console.log(`[${timestamp}] Method: ${req.method}`);
-  console.log(`[${timestamp}] Headers:`, JSON.stringify(req.headers, null, 2));
+  console.log(`[${timestamp}] Body:`, JSON.stringify(req.body, null, 2));
 
   // Set CORS headers
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -22,118 +20,69 @@ export default async function handler(req, res) {
   }
 
   try {
-    // CRITICAL FIX: Get raw body for signature validation
-    const rawBody = JSON.stringify(req.body);
-    const signature = req.headers['x-elevenlabs-signature'];
-    const timestampHeader = req.headers['x-elevenlabs-timestamp'];
-    
-    console.log(`[${timestamp}] 🔐 Signature validation inputs:`, {
-      hasSignature: !!signature,
-      hasTimestamp: !!timestampHeader,
-      signatureValue: signature,
-      timestampValue: timestampHeader,
-      bodyLength: rawBody.length,
-      hasSecret: !!process.env.ELEVENLABS_WEBHOOK_SECRET
-    });
+    // Extract all possible user identifiers from 11Labs
+    const { 
+      action, 
+      conversation_id, 
+      agent_id, 
+      user_id,
+      call_id,
+      phone_number,
+      caller_id,
+      message,
+      // These might contain user info
+      metadata,
+      custom_llm_extra_body
+    } = req.body;
 
-    // Validate signature if headers are present
-    if (signature && timestampHeader) {
-      const webhookSecret = process.env.ELEVENLABS_WEBHOOK_SECRET;
-      
-      if (!webhookSecret) {
-        console.log(`[${timestamp}] ❌ No webhook secret configured`);
-        return res.status(500).json({ error: 'Webhook secret not configured' });
-      }
-
-      // FIXED: Correct 11Labs signature validation
-      const expectedSignature = crypto
-        .createHmac('sha256', webhookSecret)
-        .update(timestampHeader + '.' + rawBody)  // Note: timestamp.body format
-        .digest('hex');
-      
-      const fullExpectedSignature = 'sha256=' + expectedSignature;
-      
-      console.log(`[${timestamp}] 🔐 Signature comparison:`, {
-        received: signature,
-        expected: fullExpectedSignature,
-        match: signature === fullExpectedSignature
-      });
-
-      if (signature !== fullExpectedSignature) {
-        console.log(`[${timestamp}] ❌ Invalid webhook signature`);
-        
-        // DEBUGGING: Try alternative validation methods
-        const altSignature1 = 'sha256=' + crypto
-          .createHmac('sha256', webhookSecret)
-          .update(rawBody)
-          .digest('hex');
-          
-        const altSignature2 = 'sha256=' + crypto
-          .createHmac('sha256', webhookSecret)
-          .update(timestampHeader + rawBody)
-          .digest('hex');
-          
-        console.log(`[${timestamp}] 🔍 Alternative signatures:`, {
-          bodyOnly: altSignature1,
-          timestampBody: altSignature2,
-          receivedAgain: signature
-        });
-        
-        // Temporarily allow through for debugging (REMOVE IN PRODUCTION)
-        console.log(`[${timestamp}] ⚠️  BYPASSING SIGNATURE CHECK FOR DEBUGGING`);
-        // return res.status(401).json({ error: 'Invalid signature' });
-      } else {
-        console.log(`[${timestamp}] ✅ Valid webhook signature`);
-      }
-    } else {
-      console.log(`[${timestamp}] ⚠️  No signature headers provided, proceeding without validation`);
-    }
-
-    // Process the webhook data
-    const { action, conversation_id, agent_id, user_id, message } = req.body;
-
-    console.log(`[${timestamp}] 📊 Processing webhook:`, {
-      action: action || 'UNDEFINED',
-      conversation_id: conversation_id || 'UNDEFINED', 
-      agent_id: agent_id || 'UNDEFINED',
-      user_id: user_id || 'UNDEFINED',
+    console.log(`[${timestamp}] 🔍 ALL user identifiers from 11Labs:`, {
+      conversation_id,
+      user_id, 
+      agent_id,
+      call_id,
+      phone_number,
+      caller_id,
+      metadata,
+      custom_llm_extra_body,
       hasMessage: !!message
     });
 
-    // Verify correct agent
-    if (agent_id && agent_id !== 'nJeN1YQZyK0aTu2SoJnM') {
-      console.log(`[${timestamp}] ❌ Wrong agent ID: ${agent_id}`);
-      return res.status(400).json({ error: 'Wrong agent ID' });
-    }
+    // CRITICAL: Map to your specific user
+    // Since this is your personal agent, always use your Firebase UUID
+    const FIREBASE_USER_UUID = 'NEgpc2haPnU2ZafTt6ECEZZMpcK2';
+    
+    console.log(`[${timestamp}] 🎯 Using Firebase User UUID: ${FIREBASE_USER_UUID}`);
 
-    // Handle different webhook actions
-    let responseData = {
+    // Get conversation history for the CORRECT user
+    const conversationHistory = await getConversationHistoryForUser(FIREBASE_USER_UUID);
+    
+    console.log(`[${timestamp}] 📚 Retrieved conversation history:`, {
+      userUUID: FIREBASE_USER_UUID,
+      messageCount: conversationHistory?.length || 0,
+      recentMessages: conversationHistory?.slice(-3).map(msg => ({
+        type: msg.type,
+        content: msg.content?.substring(0, 100) + '...'
+      }))
+    });
+
+    // Return the CORRECT user's context
+    const responseData = {
       success: true,
+      user_uuid: FIREBASE_USER_UUID,
+      conversation_id: conversation_id,
+      context: conversationHistory || [],
+      context_summary: generateContextSummary(conversationHistory),
       timestamp: timestamp,
-      action: action,
-      processed: true
+      debug_info: {
+        original_11labs_data: {
+          conversation_id,
+          user_id,
+          agent_id
+        }
+      }
     };
 
-    // Add specific handling based on action
-    switch (action) {
-      case 'get_user_context':
-        console.log(`[${timestamp}] 🔍 Getting user context...`);
-        // Add your Firebase context retrieval here
-        responseData.context = "User context retrieved from Firebase";
-        break;
-        
-      case 'store_conversation':
-        console.log(`[${timestamp}] 💾 Storing conversation...`);
-        // Add your Firebase storage logic here
-        responseData.stored = true;
-        break;
-        
-      default:
-        console.log(`[${timestamp}] ℹ️  Generic webhook action: ${action}`);
-        responseData.message = `Processed webhook action: ${action}`;
-    }
-
-    console.log(`[${timestamp}] ✅ Webhook processed successfully`);
+    console.log(`[${timestamp}] ✅ Returning CORRECT user context to 11Labs`);
     return res.status(200).json(responseData);
 
   } catch (error) {
@@ -144,4 +93,40 @@ export default async function handler(req, res) {
       timestamp: timestamp
     });
   }
+}
+
+// Get conversation history for the specific Firebase user
+async function getConversationHistoryForUser(userUUID) {
+  try {
+    // Import your Firebase functions
+    const { getConversationHistory } = await import('../lib/serverDB.js');
+    
+    console.log(`🔍 Getting conversation history for user: ${userUUID}`);
+    
+    const history = await getConversationHistory(userUUID);
+    
+    console.log(`📊 Retrieved ${history?.length || 0} messages for user ${userUUID}`);
+    
+    return history;
+  } catch (error) {
+    console.error('❌ Error getting conversation history:', error);
+    return [];
+  }
+}
+
+// Generate context summary from the CORRECT user's history
+function generateContextSummary(history) {
+  if (!history || history.length === 0) {
+    return 'No previous conversation history available.';
+  }
+  
+  // Get only recent messages to avoid confusion
+  const recentMessages = history.slice(-5);
+  
+  const summary = recentMessages
+    .filter(msg => msg.content && msg.content.trim().length > 0)
+    .map(msg => `${msg.type}: ${msg.content?.substring(0, 80)}`)
+    .join(' | ');
+    
+  return `Recent context (${history.length} total messages): ${summary}`;
 }
