@@ -1,5 +1,6 @@
-// api/start-conversation.js
-import { getMemoryManager } from '../server/MemoryManager.js';
+// api/start-conversation.js - Fixed Vercel Serverless Function
+
+import { getFirebaseDb } from '../server/firebase-config.js';
 
 export default async function handler(req, res) {
   const requestId = Math.random().toString(36).substr(2, 9);
@@ -7,7 +8,17 @@ export default async function handler(req, res) {
   console.log(`[${requestId}] === START CONVERSATION API CALLED ===`);
   console.log(`[${requestId}] Method: ${req.method}`);
   console.log(`[${requestId}] Environment: ${process.env.NODE_ENV}`);
-  console.log(`[${requestId}] User Agent: ${req.headers['user-agent']}`);
+  console.log(`[${requestId}] Vercel: ${!!process.env.VERCEL}`);
+  
+  // Add CORS headers
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  
+  // Handle OPTIONS request for CORS
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
   
   // Only allow POST requests
   if (req.method !== 'POST') {
@@ -39,88 +50,140 @@ export default async function handler(req, res) {
       });
     }
 
-    // Initialize memory manager
-    console.log(`[${requestId}] 🔧 Initializing memory manager...`);
-    const memoryManager = getMemoryManager();
-    await memoryManager.initialize();
-    console.log(`[${requestId}] ✅ Memory manager initialized`);
+    // Initialize Firebase Admin
+    console.log(`[${requestId}] 🔧 Initializing Firebase Admin...`);
+    const db = getFirebaseDb();
+    console.log(`[${requestId}] ✅ Firebase Admin initialized`);
 
-    // Check if user exists, create if needed
+    // Check if user exists
     console.log(`[${requestId}] 🔍 Checking user profile...`);
-    let userProfile = await memoryManager.getUserProfile(userUUID);
+    const userRef = db.collection('users').doc(userUUID);
+    const userDoc = await userRef.get();
     
-    if (!userProfile) {
+    let userProfile;
+    if (!userDoc.exists) {
       console.log(`[${requestId}] 👤 User profile not found, creating new user...`);
-      const createResult = await memoryManager.createNewUser(userUUID, {
-        display_name: conversationData?.user_name || 'VASA User',
-        created_via: 'conversation_api'
-      });
       
-      if (!createResult.success) {
-        throw new Error(`Failed to create user: ${createResult.error}`);
-      }
+      // Create new user document
+      userProfile = {
+        user_id: userUUID,
+        created_at: new Date(),
+        last_active: new Date(),
+        current_stage: 'pointed_origin',
+        journey_started: new Date(),
+        profile: {
+          setup_completed: true,
+          display_name: conversationData?.user_name || 'VASA User',
+          created_via: 'conversation_api'
+        },
+        metrics: {
+          total_sessions: 0,
+          breakthrough_moments: 0,
+          stages_completed: 0
+        }
+      };
       
+      await userRef.set(userProfile);
       console.log(`[${requestId}] ✅ New user created`);
-      userProfile = await memoryManager.getUserProfile(userUUID);
     } else {
+      userProfile = userDoc.data();
       console.log(`[${requestId}] ✅ User profile found`);
+      
+      // Update last active
+      await userRef.update({ last_active: new Date() });
     }
 
-    // Get conversation context for personalization
+    // Get recent conversation history
     console.log(`[${requestId}] 📚 Getting conversation context...`);
-    const conversationHistory = await memoryManager.getConversationHistory(userUUID, 5);
-    console.log(`[${requestId}] ✅ Retrieved ${conversationHistory.length} previous conversations`);
+    const conversationHistory = await db
+      .collection('users')
+      .doc(userUUID)
+      .collection('user_context')
+      .orderBy('created_at', 'desc')
+      .limit(5)
+      .get();
+    
+    const conversations = [];
+    conversationHistory.forEach((doc) => {
+      conversations.push({
+        id: doc.id,
+        ...doc.data()
+      });
+    });
+    
+    console.log(`[${requestId}] ✅ Retrieved ${conversations.length} previous conversations`);
 
     // Generate conversation context summary
-    const contextSummary = generateContextSummary(conversationHistory, userProfile);
+    const contextSummary = generateContextSummary(conversations, userProfile);
     console.log(`[${requestId}] 📝 Context summary generated:`, contextSummary.substring(0, 100) + '...');
 
     // Store conversation start event
     console.log(`[${requestId}] 💾 Storing conversation start event...`);
-    const storeResult = await memoryManager.storeConversation(userUUID, {
-      type: 'system',
-      content: 'Conversation session started',
-      message_type: 'session_start',
-      stage: userProfile.current_stage || 'pointed_origin',
-      conversation_id: `conv_${requestId}`,
-      agent_id: agentConfig?.agent_id || 'default',
+    const conversationId = `conv_${requestId}`;
+    
+    const contextEntry = {
+      context_id: `context_start_${requestId}`,
+      context_type: 'therapeutic_session',
+      current_stage: userProfile.current_stage || 'pointed_origin',
+      created_at: new Date(),
+      updated_at: new Date(),
+      conversation_thread: [{
+        message: 'ElevenLabs conversation session started',
+        sender: 'system',
+        timestamp: new Date(),
+        message_type: 'session_start',
+        stage_focus: 'session_initialization'
+      }],
+      tags: ['session_start', 'elevenlabs'],
+      priority: 3,
+      integration_insights: [],
       metadata: {
         request_id: requestId,
-        user_agent: req.headers['user-agent'],
-        timestamp: new Date().toISOString()
+        conversation_id: conversationId,
+        agent_id: agentConfig?.agent_id || 'default',
+        user_agent: req.headers['user-agent']
       }
+    };
+
+    await db
+      .collection('users')
+      .doc(userUUID)
+      .collection('user_context')
+      .doc(contextEntry.context_id)
+      .set(contextEntry);
+
+    console.log(`[${requestId}] ✅ Conversation start stored`);
+
+    // Update user session count
+    await userRef.update({
+      'metrics.total_sessions': (userProfile.metrics?.total_sessions || 0) + 1,
+      last_active: new Date()
     });
 
-    if (!storeResult.success) {
-      console.warn(`[${requestId}] ⚠️ Failed to store conversation start: ${storeResult.error}`);
-    } else {
-      console.log(`[${requestId}] ✅ Conversation start stored`);
-    }
-
-    // Prepare response data
+    // Prepare response data for ElevenLabs
     const responseData = {
       success: true,
-      conversationId: `conv_${requestId}`,
+      conversationId: conversationId,
       userProfile: {
         userUUID,
-        displayName: userProfile.profile?.personal_info?.display_name || 'User',
+        displayName: userProfile.profile?.display_name || 'User',
         currentStage: userProfile.current_stage || 'pointed_origin',
         setupCompleted: userProfile.profile?.setup_completed || false,
-        totalSessions: userProfile.metrics?.total_sessions || 0
+        totalSessions: (userProfile.metrics?.total_sessions || 0) + 1
       },
       context: {
         summary: contextSummary,
-        conversationCount: conversationHistory.length,
-        lastSession: conversationHistory[0]?.created_at || null,
+        conversationCount: conversations.length,
+        lastSession: conversations[0]?.created_at || null,
         sessionActive: true
       },
       agentConfig: {
         personalizedPrompt: generatePersonalizedPrompt(contextSummary, userProfile),
         dynamicVariables: {
-          user_name: userProfile.profile?.personal_info?.display_name || 'User',
+          user_name: userProfile.profile?.display_name || 'User',
           user_id: userUUID,
           current_stage: userProfile.current_stage || 'pointed_origin',
-          session_count: userProfile.metrics?.total_sessions || 0,
+          session_count: (userProfile.metrics?.total_sessions || 0) + 1,
           conversation_context: contextSummary
         }
       },
@@ -129,12 +192,6 @@ export default async function handler(req, res) {
     };
 
     console.log(`[${requestId}] ✅ Conversation started successfully`);
-    console.log(`[${requestId}] Response data:`, {
-      conversationId: responseData.conversationId,
-      userUUID: responseData.userProfile.userUUID,
-      currentStage: responseData.userProfile.currentStage,
-      contextLength: responseData.context.summary.length
-    });
 
     return res.status(200).json(responseData);
 
@@ -150,12 +207,12 @@ export default async function handler(req, res) {
     let errorMessage = 'Internal server error';
     let statusCode = 500;
 
-    if (error.message.includes('Firebase')) {
+    if (error.message.includes('Firebase') || error.message.includes('Firestore')) {
       errorMessage = 'Database connection error';
       statusCode = 503;
-    } else if (error.message.includes('Memory')) {
-      errorMessage = 'Memory service initialization error';
-      statusCode = 503;
+    } else if (error.message.includes('permission')) {
+      errorMessage = 'Database permission error';
+      statusCode = 403;
     } else if (error.message.includes('User')) {
       errorMessage = 'User management error';
       statusCode = 400;
@@ -196,15 +253,15 @@ function generateContextSummary(conversationHistory, userProfile) {
   }
   
   summary += ` User is currently in ${userProfile.current_stage || 'pointed_origin'} stage. `;
-  summary += `Total sessions: ${userProfile.metrics?.total_sessions || 0}.`;
+  summary += ` Total sessions: ${userProfile.metrics?.total_sessions || 0}.`;
 
   return summary;
 }
 
-// Helper function to generate personalized prompt
+// Helper function to generate personalized prompt for ElevenLabs
 function generatePersonalizedPrompt(contextSummary, userProfile) {
   const stageName = userProfile.current_stage || 'pointed_origin';
-  const displayName = userProfile.profile?.personal_info?.display_name || 'User';
+  const displayName = userProfile.profile?.display_name || 'User';
   
   return `You are VASA, a therapeutic AI guide helping ${displayName} through the Core Symbol Set journey. 
 
