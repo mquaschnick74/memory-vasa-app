@@ -1,134 +1,112 @@
-// Add this debug code to your client-side JavaScript
+// api/test-firebase.js - SERVER SIDE ONLY
 
-// Enhanced error tracking for the start-conversation endpoint
-async function debugStartConversation(userUUID) {
-  console.log('🐛 DEBUG: Starting conversation debug test...');
-  console.log('🐛 User UUID:', userUUID);
+// Ensure we're in server environment
+if (typeof window !== 'undefined') {
+  throw new Error('This API endpoint should only run on the server');
+}
+
+import { getFirebaseDb, testFirebaseConnection } from '../lib/firebase-admin.js';
+
+export default async function handler(req, res) {
+  const requestId = Math.random().toString(36).substr(2, 9);
   
-  try {
-    // Test Firebase connectivity first
-    console.log('🐛 Testing Firebase connection...');
-    const firebaseTest = await fetch('/api/test-firebase');
-    const firebaseResult = await firebaseTest.json();
-    
-    console.log('🐛 Firebase test result:', firebaseResult);
-    
-    if (!firebaseResult.success) {
-      console.error('❌ Firebase test failed:', firebaseResult);
-      return { error: 'Firebase connection failed', details: firebaseResult };
-    }
-    
-    // Now test start-conversation
-    console.log('🐛 Testing start-conversation endpoint...');
-    const response = await fetch('/api/start-conversation', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        userUUID: userUUID,
-        conversationData: {
-          user_name: 'Debug Test User',
-          source: 'debug_test'
-        },
-        agentConfig: {
-          agent_id: 'debug-test-agent'
-        }
-      })
+  console.log(`[${requestId}] Firebase test API called`);
+  console.log(`[${requestId}] Method: ${req.method}`);
+  console.log(`[${requestId}] Environment: ${process.env.NODE_ENV}`);
+  console.log(`[${requestId}] Vercel: ${!!process.env.VERCEL}`);
+  
+  // Only allow GET requests
+  if (req.method !== 'GET') {
+    console.log(`[${requestId}] ❌ Method not allowed: ${req.method}`);
+    return res.status(405).json({ 
+      error: 'Method not allowed',
+      allowedMethods: ['GET'],
+      requestId 
     });
+  }
+
+  try {
+    console.log(`[${requestId}] Testing Firebase connection...`);
     
-    console.log('🐛 Response status:', response.status);
-    console.log('🐛 Response headers:', Object.fromEntries(response.headers.entries()));
+    // Test basic Firebase initialization
+    console.log(`[${requestId}] Getting Firebase DB instance...`);
+    const db = getFirebaseDb();
+    console.log(`[${requestId}] Firebase DB instance obtained:`, !!db);
     
-    const responseText = await response.text();
-    console.log('🐛 Raw response:', responseText);
+    // Run comprehensive connection test
+    console.log(`[${requestId}] Running connection test...`);
+    const connectionTest = await testFirebaseConnection();
+    console.log(`[${requestId}] Connection test result:`, connectionTest);
     
-    let responseData;
-    try {
-      responseData = JSON.parse(responseText);
-    } catch (parseError) {
-      console.error('❌ Failed to parse response as JSON:', parseError);
-      return { 
-        error: 'Invalid JSON response', 
-        status: response.status, 
-        rawResponse: responseText 
-      };
-    }
-    
-    if (response.ok) {
-      console.log('✅ Start conversation successful:', responseData);
-      return { success: true, data: responseData };
+    if (connectionTest.success) {
+      console.log(`[${requestId}] ✅ Firebase test completed successfully`);
+      
+      return res.status(200).json({
+        success: true,
+        message: 'Firebase connection successful',
+        details: {
+          canRead: connectionTest.canRead,
+          canWrite: connectionTest.canWrite,
+          testDocumentId: connectionTest.testDocId,
+          timestamp: new Date().toISOString(),
+          environment: process.env.NODE_ENV || 'unknown',
+          serverSide: true,
+          vercel: !!process.env.VERCEL,
+          requestId
+        }
+      });
     } else {
-      console.error('❌ Start conversation failed:', responseData);
-      return { 
-        error: 'API error', 
-        status: response.status, 
-        data: responseData 
-      };
+      console.error(`[${requestId}] ❌ Firebase connection test failed`);
+      
+      return res.status(500).json({
+        success: false,
+        error: 'Firebase connection failed',
+        details: {
+          errorMessage: connectionTest.error,
+          errorCode: connectionTest.code,
+          serverSide: true,
+          requestId
+        }
+      });
     }
     
   } catch (error) {
-    console.error('❌ Debug test failed:', error);
-    return { 
-      error: 'Network or execution error', 
+    console.error(`[${requestId}] ❌ Firebase test API error:`, {
+      name: error.name,
       message: error.message,
-      stack: error.stack 
-    };
-  }
-}
-
-// Enhanced error tracking for your existing connection code
-function enhanceExistingErrorHandling() {
-  // Add this to your existing onConnect function or wherever the error occurs
-  
-  // Wrap your existing fetch call like this:
-  const originalFetch = window.fetch;
-  window.fetch = async function(url, options) {
-    console.log('🐛 Fetch called:', url, options);
+      code: error.code,
+      stack: error.stack
+    });
     
-    try {
-      const response = await originalFetch(url, options);
-      
-      if (!response.ok) {
-        console.error('❌ Fetch failed:', {
-          url,
-          status: response.status,
-          statusText: response.statusText,
-          headers: Object.fromEntries(response.headers.entries())
-        });
-        
-        // Try to get response body for debugging
-        const responseClone = response.clone();
-        try {
-          const responseText = await responseClone.text();
-          console.error('❌ Response body:', responseText);
-        } catch (bodyError) {
-          console.error('❌ Could not read response body:', bodyError);
-        }
-      }
-      
-      return response;
-    } catch (error) {
-      console.error('❌ Fetch network error:', {
-        url,
-        error: error.message,
-        stack: error.stack
-      });
-      throw error;
+    // Provide specific error messages based on error type
+    let errorMessage = 'Firebase initialization failed';
+    let statusCode = 500;
+    
+    if (error.message.includes('window is not defined')) {
+      errorMessage = 'Server-side code issue - browser code detected in server environment';
+      statusCode = 500;
+    } else if (error.message.includes('service account')) {
+      errorMessage = 'Invalid Firebase service account credentials';
+      statusCode = 500;
+    } else if (error.message.includes('project')) {
+      errorMessage = 'Firebase project configuration error';
+      statusCode = 500;
+    } else if (error.message.includes('environment variables')) {
+      errorMessage = 'Missing Firebase environment variables';
+      statusCode = 500;
     }
-  };
-}
-
-// Call this when your app loads
-enhanceExistingErrorHandling();
-
-// Test function you can call manually
-window.debugVASA = {
-  testStartConversation: debugStartConversation,
-  testFirebase: async () => {
-    const response = await fetch('/api/test-firebase');
-    return await response.json();
+    
+    return res.status(statusCode).json({
+      success: false,
+      error: errorMessage,
+      details: {
+        code: error.code,
+        message: error.message,
+        serverSide: true,
+        requestId,
+        // Only include stack in development
+        stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+      }
+    });
   }
-};
-
-console.log('🐛 Debug tools loaded. Use window.debugVASA.testStartConversation("your-user-id") to test');
+}
