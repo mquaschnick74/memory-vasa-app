@@ -25,6 +25,10 @@ const VASAInterface = () => {
   // 🆕 ADD THIS: Logout state
   const [isLoggingOut, setIsLoggingOut] = useState(false);
 
+  // 🆕 Enhanced conversation tracking
+  const [conversationId, setConversationId] = useState(null);
+  const [memoryInjected, setMemoryInjected] = useState(false);
+
   // Memory system hooks
   const { 
     conversations,
@@ -44,34 +48,107 @@ const VASAInterface = () => {
     context
   } = useConversationContext(userUUID);
 
-  // 🆕 ADD THIS: Function to retrieve stored context from Firebase
+  // 🆕 ENHANCED: More robust context retrieval with fallbacks
   const retrieveStoredContext = async (userUUID, conversationId) => {
     try {
-      const response = await fetch('/api/get-conversation-context', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          user_id: userUUID,
-          conversation_id: conversationId,
-          limit: 20
-        })
-      });
+      console.log('🧠 Retrieving stored context for user:', userUUID);
+      
+      // Method 1: Try your backend API first
+      try {
+        const response = await fetch('/api/get-conversation-context', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            user_id: userUUID,
+            conversation_id: conversationId,
+            limit: 20
+          })
+        });
 
-      if (!response.ok) {
-        throw new Error('Failed to retrieve context');
+        if (response.ok) {
+          const data = await response.json();
+          console.log('✅ Retrieved stored context from backend:', data);
+          return data.context_summary || '';
+        }
+      } catch (backendError) {
+        console.warn('⚠️ Backend context retrieval failed, trying browser memory:', backendError);
       }
 
-      const data = await response.json();
-      console.log('✅ Retrieved stored context from Firebase:', data);
+      // Method 2: Fallback to browser memory
+      const memoryManager = getBrowserMemoryManager();
+      const contextData = await memoryManager.getConversationContext(userUUID, 10);
       
-      return data.context_summary || '';
+      if (contextData && contextData.summary) {
+        console.log('✅ Retrieved context from browser memory:', contextData.summary);
+        return contextData.summary;
+      }
+
+      // Method 3: Use recent conversations from memory hooks
+      if (conversations && conversations.length > 0) {
+        const recentConversations = conversations.slice(-5);
+        const contextSummary = recentConversations
+          .map(conv => `${conv.type}: ${conv.content.slice(0, 100)}`)
+          .join('\n');
+        console.log('✅ Created context from recent conversations');
+        return contextSummary;
+      }
+
+      console.log('ℹ️ No stored context found');
+      return '';
     } catch (error) {
       console.error('❌ Failed to retrieve stored context:', error);
       return '';
     }
   };
 
-  // 🆕 FIXED: Logout function with correct auth service usage
+  // 🆕 ENHANCED: Better memory injection with conversation state tracking
+  const injectConversationContext = async () => {
+    try {
+      if (!userUUID || memoryInjected) {
+        console.log('🧠 Skipping context injection:', { userUUID: !!userUUID, memoryInjected });
+        return;
+      }
+
+      console.log('🧠 Starting context injection...');
+      setMemoryInjected(true);
+
+      // Get stored context from multiple sources
+      const storedContext = await retrieveStoredContext(userUUID, conversationId);
+      
+      // Get current profile info for personalization
+      const userName = profile?.profile?.personal_info?.display_name || 'friend';
+      const userGoals = profile?.profile?.therapeutic_goals?.[0] || 'personal growth';
+
+      // Create a more natural context injection
+      let contextMessage = '';
+      
+      if (storedContext.trim()) {
+        contextMessage = `Hello VASA, I'm ${userName} and we've spoken before. Here's what we've been working on: ${storedContext.trim()} I'd like to continue our symbolic work from where we left off, focusing on ${userGoals}.`;
+      } else {
+        contextMessage = `Hello VASA, I'm ${userName} and I'm here for our symbolic work together. I'm focused on ${userGoals} and ready to begin at stage ${currentStage}.`;
+      }
+
+      // Send context message after a brief delay
+      setTimeout(async () => {
+        if (conversation.sendMessage && conversation.status === 'connected') {
+          console.log('📤 Injecting conversation context:', contextMessage);
+          try {
+            await conversation.sendMessage(contextMessage);
+            console.log('✅ Context injection successful');
+          } catch (error) {
+            console.error('❌ Context injection failed:', error);
+            setMemoryInjected(false); // Reset to allow retry
+          }
+        }
+      }, 1000); // Increased delay for better reliability
+
+    } catch (error) {
+      console.error('❌ Context injection error:', error);
+      setMemoryInjected(false); // Reset to allow retry
+    }
+  };
+
+  // 🆕 ENHANCED: Logout function with better cleanup
   const handleLogout = async () => {
     setIsLoggingOut(true);
     
@@ -81,17 +158,26 @@ const VASAInterface = () => {
       // End any active conversation first
       if (conversation.status === 'connected') {
         console.log('🔍 Ending active VASA conversation...');
-        await conversation.endSession();
+        try {
+          await conversation.endSession();
+        } catch (error) {
+          console.warn('⚠️ Error ending conversation:', error);
+        }
         setButtonState('resting');
         setIsVASASpeaking(false);
         setIsThinking(false);
       }
 
-      // ✅ FIXED: Import and use the auth service singleton correctly
+      // Sign out from Firebase
       console.log('🔍 Signing out from Firebase...');
-      const authService = await import('./services/BrowserAuthService.js');
-      // Use the default export which is already the singleton instance
-      await authService.default.signOut();
+      try {
+        const { getBrowserAuthService } = await import('./services/BrowserAuthService.js');
+        const authService = getBrowserAuthService();
+        await authService.signOut();
+        console.log('✅ Firebase signout successful');
+      } catch (error) {
+        console.warn('⚠️ Firebase signout failed:', error);
+      }
 
       // Clear all localStorage data
       console.log('🔍 Clearing localStorage data...');
@@ -113,75 +199,26 @@ const VASAInterface = () => {
     }
   };
 
-  // CSS Stage detection function
+  // CSS Stage detection function (enhanced with better patterns)
   const detectStage = (response) => {
     let detectedStage = currentStage; // Default to current stage
 
-    // Stage detection based on VASA's response keywords
-    if (/contradiction|CVDC|hold.*tension|suspend|between/i.test(response)) {
+    // Enhanced stage detection with more patterns
+    if (/contradiction|paradox|tension|suspend|between|liminal|threshold/i.test(response)) {
       detectedStage = '_'; // Suspension - Hold Liminality
-    } else if (/integration|CYVC|completion|whole|unified|resolved/i.test(response)) {
+    } else if (/integration|completion|whole|unified|resolved|synthesis|unity/i.test(response)) {
       detectedStage = '2'; // Completion - Articulate CYVC
-    } else if (/begin|fragment|reveal|origin|start|initial/i.test(response)) {
+    } else if (/begin|fragment|reveal|origin|start|initial|source|emergence/i.test(response)) {
       detectedStage = '⊙'; // Pointed Origin - Reveal Fragmentation
-    } else if (/gesture|movement|toward|direction|shift|change/i.test(response)) {
+    } else if (/gesture|movement|toward|direction|shift|change|transition|flow/i.test(response)) {
       detectedStage = '1'; // Gesture Toward - Facilitate Thend
-    } else if (/terminal|loop|end|cycle|closure|recursive/i.test(response)) {
+    } else if (/terminal|loop|end|cycle|closure|recursive|return|completion/i.test(response)) {
       detectedStage = '⊘'; // Terminal Symbol - Recursion or Closure
-    } else if (/focus|bind|attention|concentrate|present/i.test(response)) {
+    } else if (/focus|bind|attention|concentrate|present|awareness|centering/i.test(response)) {
       detectedStage = '•'; // Focus/Bind - Introduce CVDC
     }
 
     return detectedStage;
-  };
-
-  // 🆕 UPDATED: Inject conversation context when connecting to VASA
-  const injectConversationContext = async () => {
-    try {
-      if (!userUUID) return;
-
-      // First, get stored context from Firebase
-      const storedContext = await retrieveStoredContext(userUUID, conversation?.conversationId);
-      
-      // Then, get current session context from browser memory
-      const contextData = await getBrowserMemoryManager().getConversationContext(userUUID, 10);
-      
-      // Combine both contexts
-      let fullContext = '';
-      
-      if (storedContext) {
-        fullContext += `Previous Sessions: ${storedContext}\n\n`;
-      }
-      
-      if (contextData && contextData.summary) {
-        fullContext += `Recent Context: ${contextData.summary}`;
-      }
-
-      if (fullContext.trim()) {
-        console.log('🧠 Injecting full conversation context:', fullContext);
-
-        // Create a more natural context injection that VASA should respond to
-        const contextMessage = `Hi VASA, we've spoken before. ${fullContext.trim()} I'd like to continue our symbolic work from where we left off.`;
-
-        // Send context as the first user message immediately after connection
-        setTimeout(async () => {
-          if (conversation.sendMessage) {
-            console.log('📤 Sending context message to VASA:', contextMessage);
-            await conversation.sendMessage(contextMessage);
-          }
-        }, 500);
-      } else {
-        // If no context, send a natural first message
-        setTimeout(async () => {
-          if (conversation.sendMessage) {
-            console.log('📤 Sending initial greeting to VASA');
-            await conversation.sendMessage(`Hello VASA, I'm ${profile?.profile?.personal_info?.display_name || 'ready'} to begin our symbolic work together.`);
-          }
-        }, 500);
-      }
-    } catch (error) {
-      console.error('Failed to inject conversation context:', error);
-    }
   };
 
   // Update stage history when stage changes
@@ -190,7 +227,8 @@ const VASAInterface = () => {
       const transitionData = {
         stage: newStage,
         timestamp: new Date().toISOString(),
-        fromStage: currentStage
+        fromStage: currentStage,
+        conversationId: conversationId
       };
 
       setStageHistory(prev => [...prev, transitionData]);
@@ -198,19 +236,62 @@ const VASAInterface = () => {
 
       // Store in persistent memory
       if (userUUID) {
-        await updateStageProgression(currentStage, transitionData);
+        try {
+          await updateStageProgression(currentStage, transitionData);
+        } catch (error) {
+          console.warn('Failed to store stage progression:', error);
+        }
       }
 
       console.log(`🔄 Stage transition: ${currentStage} → ${newStage}`);
     }
   };
 
+  // 🆕 ENHANCED: Better conversation storage with error handling
+  const storeConversationMessage = async (messageData) => {
+    try {
+      // Add to session memory immediately
+      setSessionMemory(prev => [...prev, messageData]);
+
+      // Store in persistent memory with retry logic
+      if (userUUID) {
+        console.log('💾 Storing conversation message:', messageData);
+        
+        try {
+          await storeConversation(messageData);
+          console.log('✅ Message stored in persistent memory');
+        } catch (error) {
+          console.warn('⚠️ Failed to store in persistent memory, retrying...', error);
+          
+          // Retry once after a delay
+          setTimeout(async () => {
+            try {
+              await storeConversation(messageData);
+              console.log('✅ Message stored on retry');
+            } catch (retryError) {
+              console.error('❌ Final storage attempt failed:', retryError);
+            }
+          }, 2000);
+        }
+      }
+    } catch (error) {
+      console.error('❌ Error in storeConversationMessage:', error);
+    }
+  };
+
   const conversation = useConversation({
     onConnect: async () => {
-      console.log('Connected to VASA');
+      console.log('✅ Connected to VASA');
       setButtonState('connected');
+      setMemoryInjected(false); // Reset for new connection
 
-      // 🆕 ADD THIS: Register conversation with backend for webhook tracking
+      // Store conversation ID for tracking
+      if (conversation?.conversationId) {
+        setConversationId(conversation.conversationId);
+        console.log('🆔 Conversation ID set:', conversation.conversationId);
+      }
+
+      // 🆕 Register conversation with backend for webhook tracking (optional)
       try {
         const response = await fetch('/api/start-conversation', {
           method: 'POST',
@@ -223,23 +304,29 @@ const VASAInterface = () => {
         });
         
         if (response.ok) {
-          console.log('✅ Conversation registered with backend for webhooks');
+          console.log('✅ Conversation registered with backend');
         }
       } catch (error) {
-        console.warn('Failed to register conversation with backend:', error);
+        console.warn('⚠️ Backend registration failed (continuing anyway):', error);
       }
 
-      // Inject conversation history context when connecting
+      // Inject conversation context
       await injectConversationContext();
     },
+    
     onDisconnect: () => {
-      console.log('Disconnected from VASA');
+      console.log('❌ Disconnected from VASA');
       setButtonState('resting');
       setIsVASASpeaking(false);
+      setIsThinking(false);
+      setMemoryInjected(false);
+      setConversationId(null);
     },
+    
     onMessage: (message) => {
-      console.log('Message:', message);
+      console.log('📨 Message received:', message);
 
+      // Handle conversation state updates
       if (message.type === 'agent_response_start') {
         setButtonState('thinking');
         setIsThinking(true);
@@ -250,47 +337,137 @@ const VASAInterface = () => {
         setIsVASASpeaking(false);
       }
 
-      // Handle both user and assistant messages
+      // Process actual message content
       if (message.message && typeof message.message === 'string') {
         const messageType = message.source === 'user' ? 'user' : 'assistant';
         const detectedStage = messageType === 'assistant' ? detectStage(message.message) : currentStage;
 
+        // Update stage if it changed
         if (messageType === 'assistant') {
           updateStageHistory(detectedStage);
         }
 
-        // Store conversation in memory
+        // Create conversation entry
         const conversationEntry = {
           type: messageType,
           content: message.message,
           stage: detectedStage,
           timestamp: new Date().toISOString(),
           message_type: message.type || 'message',
-          userUUID: userUUID
+          userUUID: userUUID,
+          conversationId: conversationId
         };
 
-        setSessionMemory(prev => [...prev, conversationEntry]);
-
-        // Store in persistent memory with better error handling
-        if (userUUID) {
-          console.log('💾 Storing conversation:', conversationEntry);
-          storeConversation(conversationEntry).catch(error => {
-            console.warn('Failed to store conversation in backend:', error);
-          });
-        }
-
-        console.log('💬 Conversation message stored locally');
+        // Store the message
+        storeConversationMessage(conversationEntry);
       }
     },
+    
     onError: (error) => {
-      console.error('Error:', error);
+      console.error('❌ VASA Error:', error);
       setButtonState('resting');
       setIsThinking(false);
       setIsVASASpeaking(false);
+      setMemoryInjected(false);
     }
   });
 
-  // Check terms acceptance and mic permission status on component mount
+  // 🆕 ENHANCED: Auto-logout with better cleanup
+  useEffect(() => {
+    let tabHiddenTime = null;
+    let logoutTimer = null;
+
+    const immediateCleanup = () => {
+      console.log('🧹 Immediate cleanup triggered');
+      localStorage.removeItem('userUUID');
+      localStorage.removeItem('terms_accepted');
+      localStorage.removeItem('currentStage');
+      localStorage.removeItem('stageHistory');
+    };
+
+    const performFullLogout = async () => {
+      try {
+        console.log('🚪 Performing full logout...');
+
+        // End conversation
+        if (conversation.status === 'connected') {
+          try {
+            await conversation.endSession();
+          } catch (error) {
+            console.warn('Error ending conversation:', error);
+          }
+        }
+
+        // Clear data
+        immediateCleanup();
+
+        // Firebase signout
+        try {
+          const { getBrowserAuthService } = await import('./services/BrowserAuthService.js');
+          const authService = getBrowserAuthService();
+          await authService.signOut();
+        } catch (error) {
+          console.warn('Firebase signout failed:', error);
+        }
+
+        return true;
+      } catch (error) {
+        console.error('Auto-logout error:', error);
+        immediateCleanup();
+        return false;
+      }
+    };
+
+    const handleBeforeUnload = () => {
+      immediateCleanup();
+      performFullLogout().catch(console.error);
+    };
+
+    const handlePageHide = () => {
+      immediateCleanup();
+      performFullLogout().catch(console.error);
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        tabHiddenTime = Date.now();
+        console.log('⏰ Starting 5-minute logout timer');
+        
+        logoutTimer = setTimeout(async () => {
+          console.log('⏰ Auto-logout triggered');
+          await performFullLogout();
+          window.location.reload();
+        }, 5 * 60 * 1000);
+        
+      } else {
+        if (logoutTimer) {
+          clearTimeout(logoutTimer);
+          logoutTimer = null;
+        }
+        
+        if (tabHiddenTime) {
+          const hiddenDuration = Date.now() - tabHiddenTime;
+          if (hiddenDuration > 5 * 60 * 1000) {
+            performFullLogout().then(() => window.location.reload());
+          }
+          tabHiddenTime = null;
+        }
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    window.addEventListener('pagehide', handlePageHide);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      window.removeEventListener('pagehide', handlePageHide);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      if (logoutTimer) clearTimeout(logoutTimer);
+    };
+  }, [conversation.status]);
+
+  // Load saved data on mount
   useEffect(() => {
     const checkTermsAcceptance = () => {
       const termsAcceptedStored = localStorage.getItem('terms_accepted');
@@ -303,26 +480,20 @@ const VASAInterface = () => {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         setMicPermission(true);
-        // Stop the stream since we're just checking permission
         stream.getTracks().forEach(track => track.stop());
       } catch (error) {
         setMicPermission(false);
       }
     };
 
-    // Load saved stage data
     const loadSavedStageData = () => {
       const savedStage = localStorage.getItem('currentStage');
       const savedHistory = localStorage.getItem('stageHistory');
 
-      if (savedStage) {
-        setCurrentStage(savedStage);
-      }
-
+      if (savedStage) setCurrentStage(savedStage);
       if (savedHistory) {
         try {
-          const history = JSON.parse(savedHistory);
-          setStageHistory(history);
+          setStageHistory(JSON.parse(savedHistory));
         } catch (error) {
           console.error('Failed to load stage history:', error);
         }
@@ -333,138 +504,6 @@ const VASAInterface = () => {
     checkMicPermission();
     loadSavedStageData();
   }, []);
-
-  // 🆕 FIXED: Auto-logout functionality with correct auth service usage
-  useEffect(() => {
-    let tabHiddenTime = null;
-    let logoutTimer = null;
-
-    console.log('🔍 Setting up auto-logout listeners...');
-
-    // Function to clear all data immediately (for fast page unloads)
-    const immediateCleanup = () => {
-      console.log('🔍 Performing immediate cleanup...');
-      localStorage.removeItem('userUUID');
-      localStorage.removeItem('terms_accepted');
-      localStorage.removeItem('currentStage');
-      localStorage.removeItem('stageHistory');
-    };
-
-    // Function to perform full logout cleanup
-    const performFullLogout = async () => {
-      try {
-        console.log('🔍 Performing full auto-logout...');
-
-        // End any active conversation first
-        if (conversation.status === 'connected') {
-          console.log('🔍 Ending VASA conversation...');
-          await conversation.endSession();
-        }
-
-        // Clear localStorage immediately
-        immediateCleanup();
-
-        // ✅ FIXED: Try Firebase signout with correct singleton usage
-        try {
-          const authService = await import('./services/BrowserAuthService.js');
-          await authService.default.signOut();
-          console.log('✅ Firebase signout successful');
-        } catch (error) {
-          console.log('⚠️ Firebase signout failed (page may be closing):', error.message);
-        }
-
-        console.log('✅ Auto-logout completed');
-        return true;
-      } catch (error) {
-        console.error('🚨 Auto-logout error:', error);
-        // Still clear localStorage even if other cleanup fails
-        immediateCleanup();
-        return false;
-      }
-    };
-
-    // Handle page unload (when user closes tab/window or navigates away)
-    const handleBeforeUnload = (event) => {
-      console.log('🔍 beforeunload triggered - immediate logout');
-      immediateCleanup();
-      
-      // Try to perform full logout (may not complete)
-      performFullLogout().catch(console.error);
-      
-      // Don't prevent the page from unloading
-      return undefined;
-    };
-
-    // Handle page hide (more reliable than beforeunload)
-    const handlePageHide = () => {
-      console.log('🔍 pagehide triggered - immediate logout');
-      immediateCleanup();
-      performFullLogout().catch(console.error);
-    };
-
-    // Handle visibility change (when user switches tabs)
-    const handleVisibilityChange = () => {
-      console.log('🔍 Visibility changed:', document.hidden ? 'hidden' : 'visible');
-      
-      if (document.hidden) {
-        // Tab became hidden - start 5 minute timer
-        tabHiddenTime = Date.now();
-        console.log('⏰ Starting 5-minute auto-logout timer');
-        
-        logoutTimer = setTimeout(async () => {
-          console.log('⏰ 5 minutes elapsed - performing auto-logout');
-          await performFullLogout();
-          // Reload page when they return to show login screen
-          window.location.reload();
-        }, 5 * 60 * 1000); // 5 minutes
-        
-      } else {
-        // Tab became visible - check how long it was hidden
-        if (logoutTimer) {
-          clearTimeout(logoutTimer);
-          logoutTimer = null;
-          console.log('⏰ Cancelled auto-logout timer');
-        }
-        
-        if (tabHiddenTime) {
-          const hiddenDuration = Date.now() - tabHiddenTime;
-          const hiddenMinutes = Math.round(hiddenDuration / 60000);
-          console.log(`👁️ Tab visible again after ${hiddenMinutes} minutes`);
-          
-          // If hidden for more than 5 minutes, logout anyway
-          if (hiddenDuration > 5 * 60 * 1000) {
-            console.log('⚠️ Hidden too long - performing logout');
-            performFullLogout().then(() => {
-              window.location.reload();
-            });
-          }
-          
-          tabHiddenTime = null;
-        }
-      }
-    };
-
-    // Add all event listeners
-    window.addEventListener('beforeunload', handleBeforeUnload);
-    window.addEventListener('pagehide', handlePageHide);
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-
-    console.log('✅ Auto-logout listeners attached');
-
-    // Cleanup function
-    return () => {
-      console.log('🔍 Cleaning up auto-logout listeners...');
-      
-      window.removeEventListener('beforeunload', handleBeforeUnload);
-      window.removeEventListener('pagehide', handlePageHide);
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-      
-      if (logoutTimer) {
-        clearTimeout(logoutTimer);
-        console.log('⏰ Cleared logout timer');
-      }
-    };
-  }, [conversation.status]); // Only depend on conversation status
 
   // Save stage data when it changes
   useEffect(() => {
@@ -491,7 +530,6 @@ const VASAInterface = () => {
     setTermsAccepted(true);
     setShowTermsModal(false);
 
-    // After accepting terms, proceed with starting session
     if (!micPermission) {
       const granted = await requestMicPermission();
       if (!granted) return;
@@ -510,7 +548,6 @@ const VASAInterface = () => {
 
   const handleDeclineTerms = () => {
     setShowTermsModal(false);
-    // Don't set termsAccepted to true, keeping the user from accessing VASA
   };
 
   // Handle main button click
@@ -519,6 +556,7 @@ const VASAInterface = () => {
       setShowTermsModal(true);
       return;
     }
+    
     if (buttonState === 'resting') {
       if (!micPermission) {
         const granted = await requestMicPermission();
@@ -540,7 +578,7 @@ const VASAInterface = () => {
     }
   };
 
-  // Button text and styling based on state
+  // Button configuration
   const getButtonConfig = () => {
     switch (buttonState) {
       case 'connecting':
@@ -602,7 +640,7 @@ const VASAInterface = () => {
     );
   }
 
-  // Styles for main interface
+  // Main interface styles
   const styles = {
     container: {
       backgroundColor: '#b23cfc',
@@ -844,7 +882,7 @@ const VASAInterface = () => {
           {getStageDescription(currentStage)}
         </div>
 
-        {/* Audio Visualizer - positioned above main button */}
+        {/* Audio Visualizer */}
         <div style={{ 
           marginTop: '1px',
           marginBottom: '24px',
@@ -921,9 +959,21 @@ const VASAInterface = () => {
               {micPermission ? 'Ready' : 'Mic Access Needed'}
             </span>
           </div>
+          {/* 🆕 Memory Status Indicator */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <div style={{
+              width: '12px',
+              height: '12px',
+              borderRadius: '50%',
+              backgroundColor: sessionMemory.length > 0 ? '#10b981' : '#6b7280'
+            }}></div>
+            <span style={{ fontSize: '14px', color: '#9ca3af' }}>
+              Memory ({sessionMemory.length})
+            </span>
+          </div>
         </div>
 
-        {/* User Info Section - Show profile info instead of auth controls */}
+        {/* User Info Section */}
         {profile && (
           <div style={{
             marginTop: '16px',
@@ -951,10 +1001,10 @@ const VASAInterface = () => {
           gap: '8px'
         }}>
           <span>🔒</span>
-          <span>You'll be automatically logged out when closing this page or after 5 minutes of inactivity</span>
+          <span>Auto-logout after 5 minutes inactive or when closing page</span>
         </div>
 
-        {/* Thinking Indicator with Cycling Animation */}
+        {/* Thinking Indicator */}
         {isThinking && (
           <div style={{
             marginTop: '16px',
@@ -976,7 +1026,7 @@ const VASAInterface = () => {
           </div>
         )}
 
-        {/* Stage History (Debug) */}
+        {/* Stage History (Collapsible Debug) */}
         {stageHistory.length > 0 && (
           <details style={{
             marginTop: '24px',
@@ -1006,7 +1056,7 @@ const VASAInterface = () => {
 
       </div>
 
-      {/* Add CSS for pulse animation and CSS cycling */}
+      {/* CSS Animations */}
       <style>{`
         @keyframes pulse {
           0%, 100% { opacity: 1; }
@@ -1021,12 +1071,6 @@ const VASAInterface = () => {
           64%  { content: "2"; }
           80%  { content: "⊘"; }
           100% { content: "⊙"; }
-        }
-
-        @keyframes thinkingPulse {
-          0% { opacity: 0.5; }
-          50% { opacity: 1; }
-          100% { opacity: 0.5; }
         }
       `}</style>
 
