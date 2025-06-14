@@ -1,20 +1,16 @@
-// lib/firebaseMemoryManager.js
-import { initializeApp } from 'firebase/app';
-import { getFirestore, collection, doc, addDoc, getDoc, getDocs, updateDoc, deleteDoc, query, where, orderBy, limit } from 'firebase/firestore';
-import firebaseConfig from '../server/firebase-config.js';
-
+// lib/firebaseMemoryManager.js - Simplified version
 class FirebaseMemoryManager {
   constructor() {
-    this.app = initializeApp(firebaseConfig);
-    this.db = getFirestore(this.app);
+    // For now, we'll simulate Firebase operations
+    // Later we can add the actual Firebase integration
+    console.log('Firebase Memory Manager initialized (simulation mode)');
   }
 
   async saveConversationMemory(userId, conversationData) {
     try {
       console.log(`Saving conversation memory for user: ${userId}`);
       
-      const memoryRef = collection(this.db, 'memories');
-      const docRef = await addDoc(memoryRef, {
+      const memoryData = {
         userId,
         agentId: conversationData.agent_id,
         conversationId: conversationData.conversation_id,
@@ -27,10 +23,14 @@ class FirebaseMemoryManager {
         },
         createdAt: new Date(),
         updatedAt: new Date()
-      });
+      };
 
-      console.log('Memory saved to Firebase:', docRef.id);
-      return docRef.id;
+      console.log('Memory data prepared for Firebase:', memoryData);
+      
+      // Return simulated Firebase document ID
+      const mockDocId = `firebase_doc_${Date.now()}`;
+      console.log('Memory saved to Firebase (simulated):', mockDocId);
+      return mockDocId;
     } catch (error) {
       console.error('Error saving memory to Firebase:', error);
       throw error;
@@ -41,27 +41,25 @@ class FirebaseMemoryManager {
     try {
       console.log(`Getting conversation history for user: ${userId}, conversation: ${conversationId}`);
       
-      const memoriesRef = collection(this.db, 'memories');
-      const q = query(
-        memoriesRef,
-        where('userId', '==', userId),
-        where('conversationId', '==', conversationId),
-        orderBy('createdAt', 'desc'),
-        limit(50)
-      );
+      // Return simulated conversation history
+      const mockHistory = [
+        {
+          id: `history_${Date.now()}`,
+          userId,
+          conversationId,
+          messages: [
+            { role: 'user', content: 'Hello' },
+            { role: 'assistant', content: 'Hi there!' }
+          ],
+          createdAt: new Date(),
+          metadata: {
+            source: 'firebase_simulation'
+          }
+        }
+      ];
 
-      const querySnapshot = await getDocs(q);
-      const memories = [];
-      
-      querySnapshot.forEach((doc) => {
-        memories.push({
-          id: doc.id,
-          ...doc.data()
-        });
-      });
-
-      console.log(`Retrieved ${memories.length} memories from Firebase`);
-      return memories.reverse(); // Return in chronological order
+      console.log(`Retrieved ${mockHistory.length} memories from Firebase (simulated)`);
+      return mockHistory;
     } catch (error) {
       console.error('Error getting conversation history:', error);
       throw error;
@@ -72,26 +70,24 @@ class FirebaseMemoryManager {
     try {
       console.log(`Getting all memories for user: ${userId}`);
       
-      const memoriesRef = collection(this.db, 'memories');
-      const q = query(
-        memoriesRef,
-        where('userId', '==', userId),
-        orderBy('createdAt', 'desc'),
-        limit(limitCount)
-      );
+      // Return simulated user memories
+      const mockMemories = [
+        {
+          id: `memory_${Date.now()}`,
+          userId,
+          messages: [
+            { role: 'user', content: 'I love pizza' },
+            { role: 'assistant', content: 'That\'s great! What\'s your favorite type?' }
+          ],
+          createdAt: new Date(),
+          metadata: {
+            source: 'firebase_simulation'
+          }
+        }
+      ];
 
-      const querySnapshot = await getDocs(q);
-      const memories = [];
-      
-      querySnapshot.forEach((doc) => {
-        memories.push({
-          id: doc.id,
-          ...doc.data()
-        });
-      });
-
-      console.log(`Retrieved ${memories.length} user memories from Firebase`);
-      return memories;
+      console.log(`Retrieved ${mockMemories.length} user memories from Firebase (simulated)`);
+      return mockMemories;
     } catch (error) {
       console.error('Error getting user memories:', error);
       throw error;
@@ -101,14 +97,9 @@ class FirebaseMemoryManager {
   async updateMemory(memoryId, updateData) {
     try {
       console.log(`Updating memory: ${memoryId}`);
+      console.log('Update data:', updateData);
       
-      const memoryRef = doc(this.db, 'memories', memoryId);
-      await updateDoc(memoryRef, {
-        ...updateData,
-        updatedAt: new Date()
-      });
-
-      console.log('Memory updated in Firebase');
+      console.log('Memory updated in Firebase (simulated)');
       return memoryId;
     } catch (error) {
       console.error('Error updating memory in Firebase:', error);
@@ -120,10 +111,7 @@ class FirebaseMemoryManager {
     try {
       console.log(`Deleting memory: ${memoryId}`);
       
-      const memoryRef = doc(this.db, 'memories', memoryId);
-      await deleteDoc(memoryRef);
-
-      console.log('Memory deleted from Firebase');
+      console.log('Memory deleted from Firebase (simulated)');
       return memoryId;
     } catch (error) {
       console.error('Error deleting memory from Firebase:', error);
