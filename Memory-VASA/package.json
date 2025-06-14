@@ -1,15 +1,12 @@
 {
-  "name": "memory-vasa-app",
+  "name": "memory-vasa-app", 
   "version": "1.0.0",
   "description": "VASA Memory Application",
   "license": "MIT",
   "type": "module",
-  "engines": {
-    "node": "18.x"
-  },
   "dependencies": {
     "firebase": "^10.0.0",
-    "openai": "^4.0.0",
+    "openai": "^4.0.0", 
     "mem0ai": "^2.1.30"
   }
 }
