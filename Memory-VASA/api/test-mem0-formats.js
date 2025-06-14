@@ -28,10 +28,10 @@ export default async function handler(req, res) {
     const mem0ai = await import('mem0ai');
     log('✅ Package imported', Object.keys(mem0ai));
     
-    // Find Memory class
-    const MemoryClass = mem0ai.Memory || mem0ai.default?.Memory;
+    // Find Memory class - NOW WE KNOW IT'S CALLED MemoryClient!
+    const MemoryClass = mem0ai.MemoryClient || mem0ai.default?.MemoryClient || mem0ai.default;
     if (!MemoryClass) {
-      throw new Error(`Memory class not found. Available: ${Object.keys(mem0ai)}`);
+      throw new Error(`Memory class not found. Available: ${Object.keys(mem0ai)}, default keys: ${mem0ai.default ? Object.keys(mem0ai.default) : 'none'}`);
     }
     
     log('✅ Memory class found');
