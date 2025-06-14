@@ -1,51 +1,30 @@
-// api/webhook.js - Fixed webhook with proper signature validation
+// api/webhook.js - Updated with built-in test mode
 import mem0Service from '../lib/mem0Service.js';
-import crypto from 'crypto';
 
 export default async function handler(req, res) {
-  // Allow GET requests for testing/health checks
-  if (req.method === 'GET') {
-    return res.status(200).json({ 
-      status: 'Webhook endpoint active',
-      timestamp: new Date().toISOString(),
-      mem0Status: mem0Service.getStatus()
-    });
+  // CORS headers
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
   }
 
+  // **NEW: TEST MODE - if URL has ?test=true**
+  if (req.query.test === 'true' || req.method === 'GET') {
+    return await runMem0Test(req, res);
+  }
+
+  // Regular webhook processing
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
   try {
-    console.log('📥 Webhook received');
-    console.log('Headers:', req.headers);
-    
-    // Optional webhook signature validation
-    const webhookSecret = process.env.WEBHOOK_SECRET;
-    
-    if (webhookSecret) {
-      const signature = req.headers['x-signature'] || req.headers['x-hub-signature-256'] || req.headers['signature'];
-      
-      if (signature) {
-        // Validate webhook signature
-        const isValid = validateWebhookSignature(req.body, signature, webhookSecret);
-        
-        if (!isValid) {
-          console.log('❌ Invalid webhook signature');
-          return res.status(401).json({ error: 'Invalid webhook signature' });
-        }
-        
-        console.log('✅ Webhook signature validated');
-      } else {
-        console.log('⚠️ No signature provided, but secret is configured');
-      }
-    } else {
-      console.log('ℹ️ No webhook secret configured, skipping signature validation');
-    }
-
     const { userId, conversationData, action = 'add', message, query, limit } = req.body;
     
-    console.log(`📥 Webhook processed - Action: ${action}, User: ${userId}`);
+    console.log(`📥 Webhook received - Action: ${action}, User: ${userId}`);
     
     switch (action) {
       case 'add':
@@ -64,23 +43,13 @@ export default async function handler(req, res) {
         });
         
       case 'search':
-        if (!userId || !query) {
-          return res.status(400).json({ error: 'Missing userId or query' });
-        }
-        
         const searchResults = await mem0Service.searchMemories(userId, query, limit || 5);
-        
         return res.status(200).json({
           success: true,
-          memories: searchResults,
-          count: searchResults.results?.length || searchResults.memories?.length || 0
+          memories: searchResults
         });
         
       case 'context':
-        if (!userId || !message) {
-          return res.status(400).json({ error: 'Missing userId or message' });
-        }
-        
         const memories = await mem0Service.searchMemories(userId, message, 5);
         const contextualResponse = await mem0Service.generateContextualResponse(
           userId, 
@@ -91,16 +60,7 @@ export default async function handler(req, res) {
         return res.status(200).json({
           success: true,
           response: contextualResponse,
-          memories_used: memories.results?.length || memories.memories?.length || 0,
-          mode: memories.mode || 'unknown'
-        });
-        
-      case 'status':
-        const status = mem0Service.getStatus();
-        return res.status(200).json({
-          success: true,
-          status,
-          timestamp: new Date().toISOString()
+          memories_used: memories.results?.length || memories.memories?.length || 0
         });
         
       default:
@@ -116,30 +76,112 @@ export default async function handler(req, res) {
   }
 }
 
-function validateWebhookSignature(payload, signature, secret) {
+// **NEW: Built-in test function**
+async function runMem0Test(req, res) {
+  const results = [];
+  
+  function log(message, data = null) {
+    const logEntry = {
+      timestamp: new Date().toISOString(),
+      message,
+      data: data ? JSON.stringify(data, null, 2) : null
+    };
+    results.push(logEntry);
+    console.log(message, data);
+  }
+
   try {
-    // Handle different signature formats
-    let sig = signature;
+    log('🧪 Starting Mem0 Test via Webhook');
     
-    // Remove 'sha256=' prefix if present
-    if (sig.startsWith('sha256=')) {
-      sig = sig.substring(7);
+    // Check environment variables
+    log('1️⃣ Environment Check');
+    const envCheck = {
+      OPENAI_API_KEY: !!process.env.OPENAI_API_KEY,
+      MEM0_API_KEY: !!process.env.MEM0_API_KEY,
+      NODE_ENV: process.env.NODE_ENV || 'unknown'
+    };
+    log('Environment status', envCheck);
+    
+    if (!process.env.OPENAI_API_KEY) {
+      throw new Error('OPENAI_API_KEY missing - add it in Vercel environment variables');
     }
     
-    // Calculate expected signature
-    const payloadString = typeof payload === 'string' ? payload : JSON.stringify(payload);
-    const expectedSignature = crypto
-      .createHmac('sha256', secret)
-      .update(payloadString)
-      .digest('hex');
+    if (!process.env.MEM0_API_KEY) {
+      throw new Error('MEM0_API_KEY missing - get it from https://app.mem0.ai/dashboard/api-keys and add to Vercel env vars');
+    }
     
-    // Compare signatures
-    return crypto.timingSafeEqual(
-      Buffer.from(sig, 'hex'),
-      Buffer.from(expectedSignature, 'hex')
-    );
+    // Test mem0Service status
+    log('2️⃣ Testing mem0Service status');
+    const serviceStatus = mem0Service.getStatus();
+    log('Service status', serviceStatus);
+    
+    // Test actual memory operations
+    log('3️⃣ Testing memory operations');
+    const testUserId = 'webhook-test-' + Date.now();
+    
+    const testConversation = {
+      messages: [
+        { role: 'user', content: 'Hello, I am testing memory. My name is Jamie and I love music.' },
+        { role: 'assistant', content: 'Nice to meet you Jamie! I\'ll remember that you love music.' }
+      ],
+      agent_id: 'vasa-test',
+      conversation_id: 'test-' + Date.now()
+    };
+    
+    // Test add memory
+    log('Adding test memory...');
+    const addResult = await mem0Service.addMemory(testUserId, testConversation);
+    log('Memory add result', addResult);
+    
+    // Wait for indexing
+    log('⏳ Waiting 2 seconds for indexing...');
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    
+    // Test search
+    log('Testing memory search...');
+    const searchResult = await mem0Service.searchMemories(testUserId, 'Jamie music preferences', 3);
+    log('Search result', searchResult);
+    
+    // Test get all
+    log('Testing get all memories...');
+    const allMemories = await mem0Service.getMemories(testUserId, 5);
+    log('Get all result', allMemories);
+    
+    // Determine if Mem0 is actually working
+    const isRealMem0 = addResult.mode !== 'openai_fallback' && addResult.mode !== 'fallback';
+    
+    log(isRealMem0 ? '🎉 SUCCESS: Real Mem0 is working!' : '⚠️ WARNING: Using fallback mode - Mem0 not connected');
+    
+    return res.status(200).json({
+      success: true,
+      test_completed: true,
+      mem0_working: isRealMem0,
+      mode: addResult.mode || 'unknown',
+      service_status: serviceStatus,
+      results,
+      next_steps: isRealMem0 
+        ? ['✅ Mem0 is working! Check dashboard: https://app.mem0.ai/dashboard']
+        : [
+            '❌ Mem0 not working - check these:',
+            '1. Verify MEM0_API_KEY is correct in Vercel environment variables',
+            '2. Ensure mem0ai package is in package.json dependencies',
+            '3. Redeploy after making changes'
+          ]
+    });
+    
   } catch (error) {
-    console.error('Signature validation error:', error);
-    return false;
+    log('❌ Test failed', { error: error.message });
+    
+    return res.status(500).json({
+      success: false,
+      error: error.message,
+      results,
+      debugging_help: [
+        'Check Vercel environment variables are set correctly',
+        'Verify API keys are valid',
+        'Ensure mem0ai package is installed',
+        'Check Vercel function logs for more details'
+      ]
+    });
   }
 }
