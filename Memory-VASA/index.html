@@ -1,42 +1,12 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>VASA Memory Interface</title>
-    <style>
-        body {
-            margin: 0;
-            padding: 40px;
-            background: linear-gradient(135deg, #b23cfc 0%, #8b5cf6 100%);
-            color: white;
-            font-family: system-ui, sans-serif;
-            min-height: 100vh;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-        }
-        .status {
-            background: rgba(255,255,255,0.1);
-            padding: 20px;
-            border-radius: 10px;
-            text-align: center;
-            max-width: 500px;
-        }
-        a {
-            color: #fbbf24;
-            text-decoration: none;
-        }
-    </style>
-</head>
-<body>
-    <div class="status">
-        <h1>🧠 VASA Memory Interface</h1>
-        <p>✅ Backend APIs are running</p>
-        <p>✅ Memory system is active</p>
-        <p><a href="/api/webhook?test=true">Test Memory System</a></p>
-        <p><a href="https://www.ivasa-ai.com/">Access VASA Interface</a></p>
-    </div>
-</body>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
 </html>
