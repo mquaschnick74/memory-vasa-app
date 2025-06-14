@@ -92,8 +92,20 @@ class Mem0Service {
       }
 
       if (!MemoryClass) {
-        this.initializationError = `Memory class not found. Available: ${Object.keys(mem0ai)}`;
+        // Enhanced debugging - show what's actually available
+        const availableKeys = Object.keys(mem0ai);
+        const availableDefaultKeys = mem0ai.default ? Object.keys(mem0ai.default) : [];
+        
+        this.initializationError = `Memory class not found. Available in mem0ai: [${availableKeys.join(', ')}]. Available in mem0ai.default: [${availableDefaultKeys.join(', ')}]`;
         console.log('❌', this.initializationError);
+        
+        // Try to find any constructor-like functions
+        for (const key of availableKeys) {
+          if (typeof mem0ai[key] === 'function') {
+            console.log(`🔍 Found function: ${key}`, typeof mem0ai[key]);
+          }
+        }
+        
         return;
       }
 
@@ -155,25 +167,63 @@ class Mem0Service {
     try {
       console.log('🧪 Testing Mem0 connection...');
       
-      // Try a simple add operation to test the connection
+      // Try different API call formats to find the correct one
       const testUserId = 'connection-test-' + Date.now();
-      const testResult = await this.memory.add(
-        'Connection test message',
-        testUserId
-      );
       
-      console.log('✅ Mem0 connection successful!', testResult);
-      this.mem0Available = true;
-      
-      // Clean up test memory if possible
+      // Try format 1: messages, user_id, metadata
       try {
-        if (testResult.id || testResult.memory_id) {
-          const memoryId = testResult.id || testResult.memory_id;
-          await this.memory.delete(memoryId);
-          console.log('🧹 Test memory cleaned up');
+        const testResult = await this.memory.add(
+          'Connection test message',
+          testUserId,
+          {
+            metadata: {
+              test: true,
+              timestamp: new Date().toISOString()
+            }
+          }
+        );
+        
+        console.log('✅ Mem0 connection successful (format 1)!', testResult);
+        this.mem0Available = true;
+        return await this.cleanupTestMemory(testResult);
+        
+      } catch (format1Error) {
+        console.log('❌ Format 1 failed:', format1Error.message);
+        
+        // Try format 2: different parameter structure
+        try {
+          const testResult = await this.memory.add({
+            messages: 'Connection test message',
+            user_id: testUserId,
+            metadata: {
+              test: true,
+              timestamp: new Date().toISOString()
+            }
+          });
+          
+          console.log('✅ Mem0 connection successful (format 2)!', testResult);
+          this.mem0Available = true;
+          return await this.cleanupTestMemory(testResult);
+          
+        } catch (format2Error) {
+          console.log('❌ Format 2 failed:', format2Error.message);
+          
+          // Try format 3: minimal parameters
+          try {
+            const testResult = await this.memory.add({
+              text: 'Connection test message',
+              user_id: testUserId
+            });
+            
+            console.log('✅ Mem0 connection successful (format 3)!', testResult);
+            this.mem0Available = true;
+            return await this.cleanupTestMemory(testResult);
+            
+          } catch (format3Error) {
+            console.log('❌ All formats failed');
+            throw new Error(`All API formats failed. Last error: ${format3Error.message}`);
+          }
         }
-      } catch (cleanupError) {
-        console.log('⚠️ Cleanup warning:', cleanupError.message);
       }
       
     } catch (error) {
@@ -187,6 +237,19 @@ class Mem0Service {
       
       throw error;
     }
+  }
+
+  async cleanupTestMemory(testResult) {
+    try {
+      if (testResult.id || testResult.memory_id) {
+        const memoryId = testResult.id || testResult.memory_id;
+        await this.memory.delete(memoryId);
+        console.log('🧹 Test memory cleaned up');
+      }
+    } catch (cleanupError) {
+      console.log('⚠️ Cleanup warning:', cleanupError.message);
+    }
+    return testResult;
   }
 
   async addMemory(userId, conversationData, metadata = {}) {
