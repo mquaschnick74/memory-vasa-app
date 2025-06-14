@@ -140,7 +140,6 @@ const VASAInterface = () => {
             setMemoryInjected(false); // Reset to allow retry
           }
         }
-      }, 1000); // Increased delay for better reliability
 
     } catch (error) {
       console.error('❌ Context injection error:', error);
