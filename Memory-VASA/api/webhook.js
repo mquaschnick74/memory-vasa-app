@@ -1,138 +1,124 @@
-// File: Memory-VASA/api/webhook.js - Ultra-simple version
-
-import admin from 'firebase-admin';
-
-// Initialize Firebase Admin (only if not already initialized)
-if (!admin.apps.length) {
-  try {
-    admin.initializeApp({
-      credential: admin.credential.cert({
-        projectId: process.env.VITE_FIREBASE_PROJECT_ID,
-        clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-        privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
-      }),
-      databaseURL: `https://${process.env.VITE_FIREBASE_PROJECT_ID}-default-rtdb.firebaseio.com/`
-    });
-    console.log('Firebase Admin initialized successfully');
-  } catch (error) {
-    console.error('Firebase Admin initialization error:', error);
-  }
-}
+// api/webhook.js - Enhanced with Mem0 integration
+import crypto from 'crypto';
+import mem0Service from '../lib/mem0Service.js';
+import firebaseMemoryManager from '../lib/firebaseMemoryManager.js';
 
 export default async function handler(req, res) {
-  const timestamp = new Date().toISOString();
-  console.log(`[${timestamp}] ========== 11LABS WEBHOOK REQUEST ==========`);
-  console.log(`[${timestamp}] Method: ${req.method}`);
-  console.log(`[${timestamp}] Headers:`, JSON.stringify(req.headers, null, 2));
-  console.log(`[${timestamp}] Body:`, JSON.stringify(req.body, null, 2));
-
-  // Set CORS headers
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, GET, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-elevenlabs-signature, x-elevenlabs-timestamp');
-
-  if (req.method === 'OPTIONS') {
-    console.log(`[${timestamp}] Handling OPTIONS preflight request`);
-    return res.status(204).end();
-  }
-
+  // Only allow POST requests
   if (req.method !== 'POST') {
-    console.log(`[${timestamp}] ❌ Method not allowed: ${req.method}`);
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
   try {
-    // Extract what we can from the request
-    const { action } = req.body;
-    
-    console.log(`[${timestamp}] 📊 Processing simple webhook request`);
-    console.log(`[${timestamp}] Action: ${action || 'UNDEFINED'}`);
+    // Verify webhook signature
+    const signature = req.headers['x-elevenlabs-signature'];
+    const expectedSignature = process.env.ELEVENLABS_WEBHOOK_SECRET;
 
-    // Use your current user UUID (hardcoded for now)
-    const CURRENT_USER_UUID = 'AVs5XlU6qQezh8GiNlRwN6UEfjM2';
-    
-    console.log(`[${timestamp}] 👤 Using user UUID: ${CURRENT_USER_UUID}`);
-
-    // Get conversation history from Firestore
-    let conversationHistory = [];
-    try {
-      console.log(`[${timestamp}] 🔍 Getting conversation history from Firestore...`);
-      
-      const db = admin.firestore();
-      const userContextRef = db.collection('users').doc(CURRENT_USER_UUID).collection('user_context');
-      const snapshot = await userContextRef.orderBy('timestamp', 'asc').limit(10).get();
-      
-      conversationHistory = snapshot.docs.map(doc => {
-        const data = doc.data();
-        return {
-          type: data.type || 'unknown',
-          content: data.content || '',
-          timestamp: data.timestamp || '',
-          stage: data.stage || ''
-        };
-      });
-      
-      console.log(`[${timestamp}] 📚 Retrieved ${conversationHistory.length} messages from Firestore`);
-      
-    } catch (firestoreError) {
-      console.error(`[${timestamp}] ❌ Firestore error:`, firestoreError);
-      conversationHistory = [];
+    if (signature !== expectedSignature) {
+      console.log('❌ Invalid webhook signature');
+      return res.status(401).json({ error: 'Invalid signature' });
     }
 
-    // Generate context summary
-    const contextSummary = generateContextSummary(conversationHistory);
-    
-    // Prepare simple response
-    const responseData = {
-      success: true,
-      user_uuid: CURRENT_USER_UUID,
-      context: conversationHistory,
-      context_summary: contextSummary,
-      timestamp: timestamp,
-      webhook_status: 'SIMPLE_WEBHOOK_SUCCESS',
-      conversation_count: conversationHistory.length
+    console.log('✅ Webhook signature verified');
+
+    // Process the webhook data
+    const webhookData = req.body;
+    console.log('📨 Received webhook:', webhookData);
+
+    // Extract important data
+    const {
+      agent_id,
+      conversation_id,
+      user_id,
+      message,
+      message_type,
+      timestamp
+    } = webhookData;
+
+    // Create conversation data object
+    const conversationData = {
+      agent_id,
+      conversation_id,
+      user_id,
+      message,
+      message_type,
+      timestamp: timestamp || new Date().toISOString(),
+      messages: [
+        {
+          role: message_type === 'user_message' ? 'user' : 'assistant',
+          content: message
+        }
+      ]
     };
 
-    console.log(`[${timestamp}] ✅ Simple webhook processed successfully`);
-    console.log(`[${timestamp}] 📊 Returning ${conversationHistory.length} messages`);
-    
-    return res.status(200).json(responseData);
+    // Process memory based on message type
+    if (message_type === 'conversation_end') {
+      console.log('🔚 Processing conversation end');
+      
+      // Get full conversation history from Firebase
+      const conversationHistory = await firebaseMemoryManager.getConversationHistory(
+        user_id, 
+        conversation_id
+      );
+
+      if (conversationHistory.length > 0) {
+        // Convert Firebase history to messages format for Mem0
+        const allMessages = conversationHistory.flatMap(entry => entry.messages || []);
+        
+        // Add comprehensive memory to Mem0
+        await mem0Service.addMemory(user_id, {
+          agent_id,
+          conversation_id,
+          messages: allMessages
+        }, {
+          conversation_end_timestamp: timestamp,
+          total_messages: allMessages.length,
+          conversation_duration: calculateConversationDuration(conversationHistory)
+        });
+
+        console.log('💾 Conversation memory added to Mem0');
+      }
+    } else if (message_type === 'user_message' || message_type === 'agent_response') {
+      console.log(`💬 Processing ${message_type}`);
+      
+      // Save individual message to Firebase for immediate access
+      await firebaseMemoryManager.saveConversationMemory(user_id, conversationData);
+      
+      // For user messages, also search relevant memories and potentially add context
+      if (message_type === 'user_message') {
+        // Search for relevant memories
+        const relevantMemories = await mem0Service.searchMemories(user_id, message, 3);
+        
+        if (relevantMemories.results && relevantMemories.results.length > 0) {
+          console.log('🧠 Found relevant memories:', relevantMemories.results.length);
+          
+          // You could use this to enhance the agent's response
+          // This would require integration with your 11 Labs agent setup
+        }
+      }
+    }
+
+    // Return success response
+    res.status(200).json({ 
+      success: true, 
+      processed: true,
+      timestamp: new Date().toISOString()
+    });
 
   } catch (error) {
-    console.error(`[${timestamp}] ❌ Webhook error:`, error);
-    
-    // Always return success to prevent agent termination
-    const safeResponse = {
-      success: true,
-      user_uuid: 'AVs5XlU6qQezh8GiNlRwN6UEfjM2',
-      context: [],
-      context_summary: 'No previous conversation history available.',
-      timestamp: timestamp,
-      webhook_status: 'ERROR_HANDLED_SAFELY'
-    };
-    
-    console.log(`[${timestamp}] 🛡️ Returning safe fallback response`);
-    return res.status(200).json(safeResponse);
+    console.error('❌ Webhook processing error:', error);
+    res.status(500).json({ 
+      error: 'Internal server error',
+      message: error.message 
+    });
   }
 }
 
-// Generate context summary
-function generateContextSummary(history) {
-  if (!history || history.length === 0) {
-    return 'Starting a new therapeutic session.';
-  }
+function calculateConversationDuration(conversationHistory) {
+  if (conversationHistory.length < 2) return 0;
   
-  const userMessages = history
-    .filter(msg => msg.type === 'user' && msg.content?.trim().length > 0)
-    .slice(-2);
+  const startTime = new Date(conversationHistory[0].createdAt);
+  const endTime = new Date(conversationHistory[conversationHistory.length - 1].createdAt);
   
-  if (userMessages.length === 0) {
-    return 'Continuing from previous session - ready to engage.';
-  }
-  
-  const recentTopics = userMessages.map(msg => 
-    `"${msg.content?.substring(0, 50)}"`
-  ).join(', ');
-    
-  return `Recent topics from ${history.length} messages: ${recentTopics}`;
+  return Math.round((endTime - startTime) / 1000); // Duration in seconds
 }
