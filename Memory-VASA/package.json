@@ -16,7 +16,7 @@
     "@elevenlabs/react": "^0.1.7",
     "firebase-admin": "^12.0.0",
     "openai": "^4.0.0",
-    "mem0ai": "^0.1.0"
+    "mem0ai": "^2.1.30"
   },
   "devDependencies": {
     "@types/react": "^18.2.15",
