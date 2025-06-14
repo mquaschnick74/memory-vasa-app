@@ -4,6 +4,9 @@
   "description": "VASA Memory Application",
   "license": "MIT",
   "type": "module",
+  "scripts": {
+    "build": "echo 'No build needed for Vercel Functions'"
+  },
   "dependencies": {
     "firebase": "^10.0.0",
     "openai": "^4.0.0", 
