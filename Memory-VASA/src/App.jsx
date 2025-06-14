@@ -1,5 +1,10 @@
 import React from 'react'
 
+// Temporarily disabled until we fix ElevenLabs dependency
+// import VASAInterface from './VASAInterface'
+// import { AppWithProfileGuard } from './guards/AuthProfileGuard.jsx'
+// import { getBrowserAuthService } from './services/BrowserAuthService.js'
+
 function App() {
   return (
     <div style={{
@@ -26,7 +31,21 @@ function App() {
       }}>
         <p>✅ React is working</p>
         <p>✅ Build process is working</p>
-        <p>✅ Ready to add VASA components</p>
+        <p>⚠️ ElevenLabs dependency needs fixing</p>
+        <p>🔧 Ready to add VASA components once deps are resolved</p>
+      </div>
+      
+      <div style={{ 
+        marginTop: '2rem',
+        padding: '1rem',
+        backgroundColor: 'rgba(255, 0, 0, 0.1)',
+        borderRadius: '8px',
+        border: '1px solid rgba(255, 255, 255, 0.3)'
+      }}>
+        <h3>Next Steps:</h3>
+        <p>1. Fix @elevenlabs/react dependency version</p>
+        <p>2. Re-enable VASAInterface import</p>
+        <p>3. Deploy with full functionality</p>
       </div>
     </div>
   )
