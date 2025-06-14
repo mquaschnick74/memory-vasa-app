@@ -42,12 +42,12 @@ class Mem0Service {
           return await import('mem0ai');
         },
         async () => {
-          console.log('📦 Trying import strategy 2: @mem0/client');
-          return await import('@mem0/client');
+          console.log('📦 Trying import strategy 2: destructured import');
+          const { Memory } = await import('mem0ai');
+          return { Memory };
         },
         async () => {
-          console.log('📦 Trying import strategy 3: dynamic require');
-          // This might work in some Node.js environments
+          console.log('📦 Trying import strategy 3: dynamic require fallback');
           const mem0Module = await import('mem0ai');
           return mem0Module.default || mem0Module;
         }
