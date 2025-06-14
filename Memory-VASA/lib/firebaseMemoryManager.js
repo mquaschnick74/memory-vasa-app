@@ -1,4 +1,4 @@
-// lib/firebaseMemoryManager.js - Real Firestore implementation
+// lib/firebaseMemoryManager.js - Quick fix to avoid index requirement
 import { initializeApp } from 'firebase/app';
 import { 
   getFirestore, 
@@ -78,11 +78,12 @@ class FirebaseMemoryManager {
       console.log(`🔍 Getting conversation history for user: ${userId}, conversation: ${conversationId}`);
       
       const memoriesRef = collection(this.db, 'conversation_memories');
+      
+      // Simplified query - just filter by userId and conversationId (no orderBy to avoid index requirement)
       const q = query(
         memoriesRef,
         where('userId', '==', userId),
         where('conversationId', '==', conversationId),
-        orderBy('createdAt', 'desc'),
         limit(50)
       );
 
@@ -99,6 +100,9 @@ class FirebaseMemoryManager {
         });
       });
 
+      // Sort in JavaScript instead of Firestore (to avoid index requirement)
+      memories.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
       console.log(`✅ Retrieved ${memories.length} memories from Firestore`);
       return memories.reverse(); // Return in chronological order
     } catch (error) {
@@ -112,10 +116,11 @@ class FirebaseMemoryManager {
       console.log(`🔍 Getting all memories for user: ${userId}`);
       
       const memoriesRef = collection(this.db, 'conversation_memories');
+      
+      // SIMPLIFIED QUERY - Just filter by userId (no orderBy to avoid index requirement)
       const q = query(
         memoriesRef,
         where('userId', '==', userId),
-        orderBy('createdAt', 'desc'),
         limit(limitCount)
       );
 
@@ -131,6 +136,9 @@ class FirebaseMemoryManager {
           updatedAt: doc.data().updatedAt?.toDate?.()?.toISOString() || doc.data().updatedAt
         });
       });
+
+      // Sort in JavaScript instead of Firestore (to avoid index requirement)
+      memories.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
       console.log(`✅ Retrieved ${memories.length} user memories from Firestore`);
       return memories;
@@ -173,39 +181,51 @@ class FirebaseMemoryManager {
     }
   }
 
-  // Additional method for therapeutic-specific queries
+  // Additional method for therapeutic-specific queries  
   async getTherapeuticSessions(userId, filters = {}) {
     try {
       console.log(`🧠 Getting therapeutic sessions for user: ${userId}`);
       
       const memoriesRef = collection(this.db, 'conversation_memories');
+      
+      // Simple query to avoid index requirements
       let q = query(
         memoriesRef,
         where('userId', '==', userId),
-        orderBy('createdAt', 'desc')
+        limit(50)
       );
-
-      // Add filters if provided
-      if (filters.therapyStage) {
-        q = query(q, where('metadata.therapeuticContext.therapy_stage', '==', filters.therapyStage));
-      }
-
-      if (filters.sessionType) {
-        q = query(q, where('metadata.therapeuticContext.session_type', '==', filters.sessionType));
-      }
 
       const querySnapshot = await getDocs(q);
       const sessions = [];
       
       querySnapshot.forEach((doc) => {
         const data = doc.data();
-        sessions.push({
-          id: doc.id,
-          ...data,
-          createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
-          updatedAt: data.updatedAt?.toDate?.()?.toISOString() || data.updatedAt
-        });
+        
+        // Apply filters in JavaScript instead of Firestore
+        let includeDoc = true;
+        
+        if (filters.therapyStage && 
+            data.metadata?.therapeuticContext?.therapy_stage !== filters.therapyStage) {
+          includeDoc = false;
+        }
+        
+        if (filters.sessionType && 
+            data.metadata?.therapeuticContext?.session_type !== filters.sessionType) {
+          includeDoc = false;
+        }
+        
+        if (includeDoc) {
+          sessions.push({
+            id: doc.id,
+            ...data,
+            createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
+            updatedAt: data.updatedAt?.toDate?.()?.toISOString() || data.updatedAt
+          });
+        }
       });
+
+      // Sort in JavaScript
+      sessions.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
       console.log(`✅ Retrieved ${sessions.length} therapeutic sessions from Firestore`);
       return sessions;
