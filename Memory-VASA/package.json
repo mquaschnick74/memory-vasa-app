@@ -2,10 +2,12 @@
   "name": "memory-vasa-app",
   "version": "1.0.0",
   "description": "VASA Memory App with Mem0 Integration",
+  "type": "module",
   "scripts": {
-    "dev": "vercel dev",
-    "build": "vercel build",
-    "start": "vercel start"
+    "start": "node server/index.js",
+    "dev": "node server/index.js",
+    "build": "echo 'No build step required for serverless functions'",
+    "test": "node test/test-mem0.js"
   },
   "dependencies": {
     "@google-cloud/firestore": "^7.1.0",
@@ -14,12 +16,13 @@
     "axios": "^1.6.2",
     "openai": "^4.20.1",
     "dotenv": "^16.3.1",
-    "crypto": "^1.0.1",
     "node-fetch": "^3.3.2",
     "mem0ai": "^1.0.0"
   },
   "devDependencies": {
-    "@types/node": "^20.10.4",
-    "typescript": "^5.3.3"
+    "@types/node": "^20.10.4"
+  },
+  "engines": {
+    "node": ">=18.0.0"
   }
 }
