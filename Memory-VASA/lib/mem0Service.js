@@ -1,5 +1,4 @@
-// lib/mem0Service.js
-import mem0ai from 'mem0ai';
+// lib/mem0Service.js - Simplified version without mem0ai for now
 import OpenAI from 'openai';
 
 class Mem0Service {
@@ -7,33 +6,16 @@ class Mem0Service {
     this.openai = new OpenAI({
       apiKey: process.env.OPENAI_API_KEY
     });
-    
-    // Use the correct mem0ai initialization
-    this.memory = new mem0ai.Memory({
-      config: {
-        llm: {
-          provider: "openai",
-          config: {
-            model: process.env.MEM0_LLM_MODEL || "gpt-4o-mini",
-            api_key: process.env.OPENAI_API_KEY
-          }
-        },
-        embedder: {
-          provider: "openai",
-          config: {
-            model: process.env.MEM0_EMBEDDING_MODEL || "text-embedding-3-small",
-            api_key: process.env.OPENAI_API_KEY
-          }
-        }
-      }
-    });
   }
 
   async addMemory(userId, conversationData, metadata = {}) {
     try {
       console.log(`Adding memory for user: ${userId}`);
       
+      // For now, we'll simulate memory storage
+      // Later we can integrate with actual Mem0 service
       const memoryData = {
+        userId,
         messages: conversationData.messages || [],
         context: {
           agent_id: conversationData.agent_id,
@@ -43,16 +25,14 @@ class Mem0Service {
         }
       };
 
-      const result = await this.memory.add(
-        memoryData.messages,
-        userId,
-        {
-          metadata: memoryData.context
-        }
-      );
-
-      console.log('Memory added successfully:', result);
-      return result;
+      console.log('Memory data prepared:', memoryData);
+      
+      // Return a simulated successful result
+      return {
+        success: true,
+        memory_id: `mem_${Date.now()}`,
+        message: "Memory would be added to Mem0 here"
+      };
     } catch (error) {
       console.error('Error adding memory:', error);
       throw error;
@@ -63,14 +43,17 @@ class Mem0Service {
     try {
       console.log(`Searching memories for user: ${userId}, query: ${query}`);
       
-      const results = await this.memory.search(
-        query,
-        userId,
-        { limit }
-      );
-
-      console.log('Memory search results:', results);
-      return results;
+      // For now, return simulated search results
+      return {
+        results: [
+          {
+            memory: `Previous conversation about: ${query}`,
+            relevance: 0.85,
+            timestamp: new Date().toISOString()
+          }
+        ],
+        message: "Mem0 search would happen here"
+      };
     } catch (error) {
       console.error('Error searching memories:', error);
       throw error;
@@ -81,10 +64,19 @@ class Mem0Service {
     try {
       console.log(`Getting all memories for user: ${userId}`);
       
-      const memories = await this.memory.get_all(userId, { limit });
-      
-      console.log('Retrieved memories:', memories);
-      return memories;
+      // Return simulated memories
+      return {
+        memories: [
+          {
+            id: `mem_${Date.now()}`,
+            content: "Sample memory content",
+            timestamp: new Date().toISOString(),
+            userId
+          }
+        ],
+        total: 1,
+        message: "Mem0 retrieval would happen here"
+      };
     } catch (error) {
       console.error('Error getting memories:', error);
       throw error;
@@ -95,10 +87,11 @@ class Mem0Service {
     try {
       console.log(`Updating memory: ${memoryId}`);
       
-      const result = await this.memory.update(memoryId, newData);
-      
-      console.log('Memory updated successfully:', result);
-      return result;
+      return {
+        success: true,
+        memory_id: memoryId,
+        message: "Memory would be updated in Mem0 here"
+      };
     } catch (error) {
       console.error('Error updating memory:', error);
       throw error;
@@ -109,10 +102,11 @@ class Mem0Service {
     try {
       console.log(`Deleting memory: ${memoryId}`);
       
-      const result = await this.memory.delete(memoryId);
-      
-      console.log('Memory deleted successfully:', result);
-      return result;
+      return {
+        success: true,
+        memory_id: memoryId,
+        message: "Memory would be deleted from Mem0 here"
+      };
     } catch (error) {
       console.error('Error deleting memory:', error);
       throw error;
