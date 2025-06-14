@@ -101,7 +101,7 @@ const VASAInterface = () => {
     }
   };
 
-  // 🆕 FIXED: Immediate context injection - no setTimeout delays
+  // FIXED: Immediate context injection - no setTimeout delays
   const injectConversationContext = async () => {
     try {
       if (!userUUID || memoryInjected) {
@@ -128,7 +128,7 @@ const VASAInterface = () => {
         contextMessage = `Hello VASA, I'm ${userName} and I'm here for our symbolic work together. I'm focused on ${userGoals} and ready to begin at stage ${currentStage}.`;
       }
 
-      // 🆕 FIXED: Send context message IMMEDIATELY - no setTimeout
+      // FIXED: Send context message IMMEDIATELY - no setTimeout
       if (conversation.sendMessage && conversation.status === 'connected') {
         console.log('📤 Injecting conversation context IMMEDIATELY:', contextMessage);
         try {
@@ -289,10 +289,11 @@ const VASAInterface = () => {
         console.log('🆔 Conversation ID set:', conversation.conversationId);
       }
 
-      // 🆕 FIXED: Immediate context injection - no delay
-      await injectConversationContext();
+      // 🆕 DISABLED: Let webhook handle context injection instead of React
+      // await injectConversationContext();
+      console.log('🔥 React context injection DISABLED - webhook will handle memory injection');
 
-      // Register conversation with backend for webhook tracking (optional)
+      // Register conversation with backend for webhook tracking
       try {
         const response = await fetch('/api/start-conversation', {
           method: 'POST',
@@ -305,7 +306,7 @@ const VASAInterface = () => {
         });
         
         if (response.ok) {
-          console.log('✅ Conversation registered with backend');
+          console.log('✅ Conversation registered with backend - webhook will inject context');
         }
       } catch (error) {
         console.warn('⚠️ Backend registration failed (continuing anyway):', error);
