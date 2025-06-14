@@ -74,12 +74,13 @@ class Mem0Service {
 
       // Try to find the Memory class in different locations
       const memoryClassCandidates = [
-        mem0ai.Memory,
+        mem0ai.MemoryClient,    // This is the correct one!
+        mem0ai.Memory,          // Keep as fallback
+        mem0ai.default?.MemoryClient,
         mem0ai.default?.Memory,
         mem0ai.Client,
         mem0ai.default?.Client,
-        mem0ai.MemoryClient,
-        mem0ai.default?.MemoryClient
+        mem0ai.default         // Try default export directly
       ];
 
       let MemoryClass = null;
