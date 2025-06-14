@@ -1,4 +1,4 @@
-// File: Memory-VASA/api/webhook.js - Standalone version without external dependencies
+// File: Memory-VASA/api/webhook.js - Ultra-simple version
 
 import admin from 'firebase-admin';
 
@@ -23,6 +23,7 @@ export default async function handler(req, res) {
   const timestamp = new Date().toISOString();
   console.log(`[${timestamp}] ========== 11LABS WEBHOOK REQUEST ==========`);
   console.log(`[${timestamp}] Method: ${req.method}`);
+  console.log(`[${timestamp}] Headers:`, JSON.stringify(req.headers, null, 2));
   console.log(`[${timestamp}] Body:`, JSON.stringify(req.body, null, 2));
 
   // Set CORS headers
@@ -41,23 +42,13 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { 
-      action, 
-      conversation_id, 
-      agent_id, 
-      user_id,
-      message
-    } = req.body;
+    // Extract what we can from the request
+    const { action } = req.body;
+    
+    console.log(`[${timestamp}] 📊 Processing simple webhook request`);
+    console.log(`[${timestamp}] Action: ${action || 'UNDEFINED'}`);
 
-    console.log(`[${timestamp}] 📊 Processing webhook:`, {
-      action: action || 'UNDEFINED',
-      conversation_id: conversation_id || 'UNDEFINED', 
-      agent_id: agent_id || 'UNDEFINED',
-      user_id: user_id || 'UNDEFINED',
-      hasMessage: !!message
-    });
-
-    // Use current user UUID - update this to your current user
+    // Use your current user UUID (hardcoded for now)
     const CURRENT_USER_UUID = 'AVs5XlU6qQezh8GiNlRwN6UEfjM2';
     
     console.log(`[${timestamp}] 👤 Using user UUID: ${CURRENT_USER_UUID}`);
@@ -69,7 +60,7 @@ export default async function handler(req, res) {
       
       const db = admin.firestore();
       const userContextRef = db.collection('users').doc(CURRENT_USER_UUID).collection('user_context');
-      const snapshot = await userContextRef.orderBy('timestamp', 'asc').limit(20).get();
+      const snapshot = await userContextRef.orderBy('timestamp', 'asc').limit(10).get();
       
       conversationHistory = snapshot.docs.map(doc => {
         const data = doc.data();
@@ -77,8 +68,7 @@ export default async function handler(req, res) {
           type: data.type || 'unknown',
           content: data.content || '',
           timestamp: data.timestamp || '',
-          stage: data.stage || '',
-          conversation_id: data.conversation_id || ''
+          stage: data.stage || ''
         };
       });
       
@@ -86,74 +76,63 @@ export default async function handler(req, res) {
       
     } catch (firestoreError) {
       console.error(`[${timestamp}] ❌ Firestore error:`, firestoreError);
-      // Don't fail the webhook - continue with empty history
       conversationHistory = [];
     }
 
     // Generate context summary
     const contextSummary = generateContextSummary(conversationHistory);
     
-    // Prepare response data
+    // Prepare simple response
     const responseData = {
       success: true,
       user_uuid: CURRENT_USER_UUID,
-      conversation_id: conversation_id || 'unknown',
       context: conversationHistory,
       context_summary: contextSummary,
       timestamp: timestamp,
-      webhook_status: 'WEBHOOK_SUCCESSFULLY_PROCESSED',
-      debug_info: {
-        conversation_count: conversationHistory.length,
-        action_processed: action,
-        agent_id: agent_id
-      }
+      webhook_status: 'SIMPLE_WEBHOOK_SUCCESS',
+      conversation_count: conversationHistory.length
     };
 
-    console.log(`[${timestamp}] ✅ Webhook processed successfully`);
-    console.log(`[${timestamp}] 📊 Returning context with ${conversationHistory.length} messages`);
+    console.log(`[${timestamp}] ✅ Simple webhook processed successfully`);
+    console.log(`[${timestamp}] 📊 Returning ${conversationHistory.length} messages`);
     
     return res.status(200).json(responseData);
 
   } catch (error) {
     console.error(`[${timestamp}] ❌ Webhook error:`, error);
-    console.error(`[${timestamp}] ❌ Error stack:`, error.stack);
     
-    // Return a safe fallback response to prevent 11Labs disconnection
-    const fallbackResponse = {
+    // Always return success to prevent agent termination
+    const safeResponse = {
       success: true,
       user_uuid: 'AVs5XlU6qQezh8GiNlRwN6UEfjM2',
-      conversation_id: req.body.conversation_id || 'unknown',
       context: [],
       context_summary: 'No previous conversation history available.',
       timestamp: timestamp,
-      webhook_status: 'WEBHOOK_ERROR_HANDLED',
-      error_handled: true,
-      error_message: error.message
+      webhook_status: 'ERROR_HANDLED_SAFELY'
     };
     
-    console.log(`[${timestamp}] 🛡️ Returning fallback response to prevent disconnection`);
-    return res.status(200).json(fallbackResponse);
+    console.log(`[${timestamp}] 🛡️ Returning safe fallback response`);
+    return res.status(200).json(safeResponse);
   }
 }
 
-// Generate context summary from conversation history
+// Generate context summary
 function generateContextSummary(history) {
   if (!history || history.length === 0) {
-    return 'No previous conversation history available for this session.';
+    return 'Starting a new therapeutic session.';
   }
   
-  // Get only user messages to understand what user has discussed
   const userMessages = history
     .filter(msg => msg.type === 'user' && msg.content?.trim().length > 0)
-    .slice(-3); // Last 3 user messages
+    .slice(-2);
   
   if (userMessages.length === 0) {
-    return 'Current session just started.';
+    return 'Continuing from previous session - ready to engage.';
   }
   
-  const topics = userMessages.map(msg => 
-    `User said: "${msg.content?.substring(0, 100)}"`
-  ).join(' | ');
+  const recentTopics = userMessages.map(msg => 
+    `"${msg.content?.substring(0, 50)}"`
+  ).join(', ');
     
-  return `Recent conversation context (${history.length} total messages): ${topics}`;
+  return `Recent topics from ${history.length} messages: ${recentTopics}`;
 }
