@@ -1,4 +1,4 @@
-// lib/mem0Service.js - Real Mem0 integration with fallback
+// lib/mem0Service.js - Fixed Mem0 integration with proper API connection
 import OpenAI from 'openai';
 
 class Mem0Service {
@@ -9,99 +9,143 @@ class Mem0Service {
     
     this.mem0Available = false;
     this.memory = null;
+    this.mem0ApiKey = process.env.MEM0_API_KEY;
     
-    // Try to initialize Mem0 - different import patterns
+    // Initialize Mem0 if API key is available
     this.initializeMem0();
   }
 
   async initializeMem0() {
     try {
       console.log('🔄 Attempting to initialize Mem0...');
+      console.log('🔑 Mem0 API Key present:', !!this.mem0ApiKey);
       
-      // Try different import patterns for mem0ai
+      if (!this.mem0ApiKey) {
+        console.log('⚠️ No MEM0_API_KEY found in environment variables');
+        return;
+      }
+
+      // Try to import and initialize Mem0
       let mem0ai;
       
       try {
-        // Pattern 1: Default import
-        const { default: mem0aiDefault } = await import('mem0ai');
-        mem0ai = mem0aiDefault;
-      } catch (e1) {
+        // Try the main import pattern
+        mem0ai = await import('mem0ai');
+        console.log('📦 Mem0ai package imported successfully');
+      } catch (importError) {
+        console.log('❌ Failed to import mem0ai:', importError.message);
         try {
-          // Pattern 2: Named import
+          // Try alternative import
           const { Memory } = await import('mem0ai');
           mem0ai = { Memory };
-        } catch (e2) {
-          try {
-            // Pattern 3: Namespace import
-            mem0ai = await import('mem0ai');
-          } catch (e3) {
-            console.log('⚠️ Mem0ai package import failed, using OpenAI-only mode');
-            return;
-          }
+        } catch (altError) {
+          console.log('❌ Alternative import also failed:', altError.message);
+          return;
         }
       }
 
-      // Try to create Memory instance
-      if (mem0ai && (mem0ai.Memory || mem0ai.default?.Memory)) {
-        const MemoryClass = mem0ai.Memory || mem0ai.default.Memory;
-        
-        this.memory = new MemoryClass({
-          config: {
-            llm: {
-              provider: "openai",
-              config: {
-                model: process.env.MEM0_LLM_MODEL || "gpt-4o-mini",
-                api_key: process.env.OPENAI_API_KEY
-              }
-            },
-            embedder: {
-              provider: "openai", 
-              config: {
-                model: process.env.MEM0_EMBEDDING_MODEL || "text-embedding-3-small",
-                api_key: process.env.OPENAI_API_KEY
-              }
+      // Initialize Memory with API key
+      const MemoryClass = mem0ai.Memory || mem0ai.default?.Memory;
+      
+      if (!MemoryClass) {
+        console.log('❌ Memory class not found in mem0ai package');
+        return;
+      }
+
+      this.memory = new MemoryClass({
+        api_key: this.mem0ApiKey,  // This is the key part!
+        config: {
+          llm: {
+            provider: "openai",
+            config: {
+              model: process.env.MEM0_LLM_MODEL || "gpt-4o-mini",
+              api_key: process.env.OPENAI_API_KEY
+            }
+          },
+          embedder: {
+            provider: "openai", 
+            config: {
+              model: process.env.MEM0_EMBEDDING_MODEL || "text-embedding-3-small",
+              api_key: process.env.OPENAI_API_KEY
             }
           }
-        });
-        
-        this.mem0Available = true;
-        console.log('✅ Mem0 initialized successfully');
-      }
+        }
+      });
+      
+      // Test the connection
+      await this.testConnection();
+      
     } catch (error) {
-      console.log('⚠️ Mem0 initialization failed, using OpenAI-only mode:', error.message);
+      console.log('❌ Mem0 initialization failed:', error.message);
+      console.log('🔄 Will use OpenAI fallback mode');
+    }
+  }
+
+  async testConnection() {
+    try {
+      console.log('🧪 Testing Mem0 connection...');
+      
+      // Try a simple operation to test connection
+      const testUserId = 'connection-test-' + Date.now();
+      const testResult = await this.memory.add(
+        'This is a connection test message.',
+        testUserId
+      );
+      
+      console.log('✅ Mem0 connection successful!', testResult);
+      this.mem0Available = true;
+      
+      // Clean up test memory
+      if (testResult.id) {
+        await this.memory.delete(testResult.id);
+        console.log('🧹 Test memory cleaned up');
+      }
+      
+    } catch (error) {
+      console.log('❌ Mem0 connection test failed:', error.message);
+      throw error;
     }
   }
 
   async addMemory(userId, conversationData, metadata = {}) {
     try {
       console.log(`🧠 Adding memory for user: ${userId}`);
+      console.log('🔍 Mem0 available:', this.mem0Available);
       
-      const memoryData = {
-        messages: conversationData.messages || [],
-        context: {
-          agent_id: conversationData.agent_id,
-          conversation_id: conversationData.conversation_id,
-          timestamp: new Date().toISOString(),
-          ...metadata
-        }
-      };
-
       if (this.mem0Available && this.memory) {
-        // Use real Mem0
+        // Use real Mem0 - format the messages properly
+        const messagesText = conversationData.messages
+          .map(msg => `${msg.role}: ${msg.content}`)
+          .join('\n');
+        
         console.log('🔄 Using real Mem0 service...');
         const result = await this.memory.add(
-          memoryData.messages,
+          messagesText,
           userId,
           {
-            metadata: memoryData.context
+            metadata: {
+              agent_id: conversationData.agent_id,
+              conversation_id: conversationData.conversation_id,
+              timestamp: new Date().toISOString(),
+              ...metadata
+            }
           }
         );
+        
         console.log('✅ Memory added to Mem0 successfully:', result);
         return result;
       } else {
         // Fallback: Use OpenAI to create memory summary
         console.log('🔄 Using OpenAI fallback for memory...');
-        const memoryResult = await this.createMemoryWithOpenAI(userId, memoryData);
+        const memoryResult = await this.createMemoryWithOpenAI(userId, {
+          messages: conversationData.messages || [],
+          context: {
+            agent_id: conversationData.agent_id,
+            conversation_id: conversationData.conversation_id,
+            timestamp: new Date().toISOString(),
+            ...metadata
+          }
+        });
         console.log('✅ Memory processed with OpenAI fallback:', memoryResult);
         return memoryResult;
       }
@@ -116,7 +160,6 @@ class Mem0Service {
       console.log(`🔍 Searching memories for user: ${userId}, query: ${query}`);
       
       if (this.mem0Available && this.memory) {
-        // Use real Mem0 search
         console.log('🔄 Using real Mem0 search...');
         const results = await this.memory.search(
           query,
@@ -126,7 +169,6 @@ class Mem0Service {
         console.log('✅ Mem0 search completed:', results);
         return results;
       } else {
-        // Fallback: Simulated search with contextual results
         console.log('🔄 Using search fallback...');
         const fallbackResults = await this.searchWithOpenAIFallback(userId, query, limit);
         console.log('✅ Fallback search completed:', fallbackResults);
@@ -143,13 +185,11 @@ class Mem0Service {
       console.log(`📚 Getting all memories for user: ${userId}`);
       
       if (this.mem0Available && this.memory) {
-        // Use real Mem0
         console.log('🔄 Using real Mem0 retrieval...');
         const memories = await this.memory.get_all(userId, { limit });
         console.log('✅ Mem0 memories retrieved:', memories);
         return memories;
       } else {
-        // Fallback: Return structured response
         console.log('🔄 Using retrieval fallback...');
         const fallbackMemories = {
           memories: [
@@ -173,7 +213,7 @@ class Mem0Service {
     }
   }
 
-  // OpenAI fallback methods
+  // OpenAI fallback methods (same as before)
   async createMemoryWithOpenAI(userId, memoryData) {
     try {
       const summary = await this.openai.chat.completions.create({
@@ -206,8 +246,6 @@ class Mem0Service {
 
   async searchWithOpenAIFallback(userId, query, limit) {
     try {
-      // In a real implementation, this would search your stored memories
-      // For now, provide a contextual response
       const response = await this.openai.chat.completions.create({
         model: "gpt-4o-mini",
         messages: [
@@ -244,7 +282,7 @@ class Mem0Service {
   async generateContextualResponse(userId, currentMessage, memories) {
     try {
       const memoriesText = memories.results
-        ? memories.results.map(entry => `- ${entry.memory}`).join('\n')
+        ? memories.results.map(entry => `- ${entry.memory || entry.content}`).join('\n')
         : 'No relevant memories found.';
 
       const systemPrompt = `You are a helpful AI assistant with access to conversation history. 
@@ -279,41 +317,13 @@ Instructions:
     }
   }
 
-  // Utility methods
-  async updateMemory(memoryId, newData) {
-    try {
-      console.log(`📝 Updating memory: ${memoryId}`);
-      
-      if (this.mem0Available && this.memory) {
-        const result = await this.memory.update(memoryId, newData);
-        console.log('✅ Memory updated in Mem0');
-        return result;
-      } else {
-        console.log('✅ Memory update (fallback mode)');
-        return { success: true, memory_id: memoryId, mode: "fallback" };
-      }
-    } catch (error) {
-      console.error('❌ Error updating memory:', error);
-      throw error;
-    }
-  }
-
-  async deleteMemory(memoryId) {
-    try {
-      console.log(`🗑️ Deleting memory: ${memoryId}`);
-      
-      if (this.mem0Available && this.memory) {
-        const result = await this.memory.delete(memoryId);
-        console.log('✅ Memory deleted from Mem0');
-        return result;
-      } else {
-        console.log('✅ Memory deletion (fallback mode)');
-        return { success: true, memory_id: memoryId, mode: "fallback" };
-      }
-    } catch (error) {
-      console.error('❌ Error deleting memory:', error);
-      throw error;
-    }
+  // Status check method
+  getStatus() {
+    return {
+      mem0Available: this.mem0Available,
+      hasApiKey: !!this.mem0ApiKey,
+      mode: this.mem0Available ? 'mem0' : 'openai_fallback'
+    };
   }
 }
 
