@@ -7,11 +7,6 @@
       "maxDuration": 30
     }
   },
-  "env": {
-    "OPENAI_API_KEY": "@openai-api-key",
-    "MEM0_API_KEY": "@mem0-api-key",
-    "ELEVENLABS_WEBHOOK_SECRET": "@elevenlabs-webhook-secret"
-  },
   "rewrites": [
     {
       "source": "/api/(.*)",
