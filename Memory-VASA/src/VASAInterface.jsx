@@ -22,10 +22,10 @@ const VASAInterface = () => {
   const [isVASASpeaking, setIsVASASpeaking] = useState(false);
   const [sessionMemory, setSessionMemory] = useState([]); // Store conversation memory
 
-  // 🆕 ADD THIS: Logout state
+  // Logout state
   const [isLoggingOut, setIsLoggingOut] = useState(false);
 
-  // 🆕 Enhanced conversation tracking
+  // Enhanced conversation tracking
   const [conversationId, setConversationId] = useState(null);
   const [memoryInjected, setMemoryInjected] = useState(false);
 
@@ -48,7 +48,7 @@ const VASAInterface = () => {
     context
   } = useConversationContext(userUUID);
 
-  // 🆕 ENHANCED: More robust context retrieval with fallbacks
+  // ENHANCED: More robust context retrieval with fallbacks
   const retrieveStoredContext = async (userUUID, conversationId) => {
     try {
       console.log('🧠 Retrieving stored context for user:', userUUID);
@@ -101,7 +101,7 @@ const VASAInterface = () => {
     }
   };
 
-  // 🆕 ENHANCED: Better memory injection with conversation state tracking
+  // 🆕 FIXED: Immediate context injection - no setTimeout delays
   const injectConversationContext = async () => {
     try {
       if (!userUUID || memoryInjected) {
@@ -109,7 +109,7 @@ const VASAInterface = () => {
         return;
       }
 
-      console.log('🧠 Starting context injection...');
+      console.log('🧠 Starting IMMEDIATE context injection...');
       setMemoryInjected(true);
 
       // Get stored context from multiple sources
@@ -128,18 +128,17 @@ const VASAInterface = () => {
         contextMessage = `Hello VASA, I'm ${userName} and I'm here for our symbolic work together. I'm focused on ${userGoals} and ready to begin at stage ${currentStage}.`;
       }
 
-      // Send context message after a brief delay
-      setTimeout(async () => {
-        if (conversation.sendMessage && conversation.status === 'connected') {
-          console.log('📤 Injecting conversation context:', contextMessage);
-          try {
-            await conversation.sendMessage(contextMessage);
-            console.log('✅ Context injection successful');
-          } catch (error) {
-            console.error('❌ Context injection failed:', error);
-            setMemoryInjected(false); // Reset to allow retry
-          }
+      // 🆕 FIXED: Send context message IMMEDIATELY - no setTimeout
+      if (conversation.sendMessage && conversation.status === 'connected') {
+        console.log('📤 Injecting conversation context IMMEDIATELY:', contextMessage);
+        try {
+          await conversation.sendMessage(contextMessage);
+          console.log('✅ Context injection successful');
+        } catch (error) {
+          console.error('❌ Context injection failed:', error);
+          setMemoryInjected(false); // Reset to allow retry
         }
+      }
 
     } catch (error) {
       console.error('❌ Context injection error:', error);
@@ -147,7 +146,7 @@ const VASAInterface = () => {
     }
   };
 
-  // 🆕 ENHANCED: Logout function with better cleanup
+  // ENHANCED: Logout function with better cleanup
   const handleLogout = async () => {
     setIsLoggingOut(true);
     
@@ -246,7 +245,7 @@ const VASAInterface = () => {
     }
   };
 
-  // 🆕 ENHANCED: Better conversation storage with error handling
+  // ENHANCED: Better conversation storage with error handling
   const storeConversationMessage = async (messageData) => {
     try {
       // Add to session memory immediately
@@ -290,7 +289,10 @@ const VASAInterface = () => {
         console.log('🆔 Conversation ID set:', conversation.conversationId);
       }
 
-      // 🆕 Register conversation with backend for webhook tracking (optional)
+      // 🆕 FIXED: Immediate context injection - no delay
+      await injectConversationContext();
+
+      // Register conversation with backend for webhook tracking (optional)
       try {
         const response = await fetch('/api/start-conversation', {
           method: 'POST',
@@ -308,9 +310,6 @@ const VASAInterface = () => {
       } catch (error) {
         console.warn('⚠️ Backend registration failed (continuing anyway):', error);
       }
-
-      // Inject conversation context
-      await injectConversationContext();
     },
     
     onDisconnect: () => {
@@ -371,7 +370,7 @@ const VASAInterface = () => {
     }
   });
 
-  // 🆕 ENHANCED: Auto-logout with better cleanup
+  // ENHANCED: Auto-logout with better cleanup
   useEffect(() => {
     let tabHiddenTime = null;
     let logoutTimer = null;
@@ -958,7 +957,7 @@ const VASAInterface = () => {
               {micPermission ? 'Ready' : 'Mic Access Needed'}
             </span>
           </div>
-          {/* 🆕 Memory Status Indicator */}
+          {/* Memory Status Indicator */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <div style={{
               width: '12px',
