@@ -132,20 +132,23 @@ export default async function handler(req, res) {
       return res.status(200).json({
         success: true,
         mem0_working: true,
-        working_format: workingFormat,
+        working_api_key_format: workingKeyFormat,
+        working_method_format: workingFormat,
         working_result: workingResult,
         results,
         fix_instructions: [
           '✅ MemoryClient is working!',
-          '✅ Update mem0Service.js to use MemoryClient instead of Memory',
-          `✅ Use this format: ${workingFormat}`,
+          `✅ Use API key format: ${workingKeyFormat}`,
+          `✅ Use method format: ${workingFormat}`,
+          '✅ Update mem0Service.js with these formats',
           '✅ Your Mem0 dashboard should now show activity!'
         ]
       });
     } else {
       return res.status(500).json({
         success: false,
-        error: 'No working format found, but MemoryClient exists',
+        error: 'MemoryClient created but no working method format found',
+        working_api_key_format: workingKeyFormat,
         results
       });
     }
