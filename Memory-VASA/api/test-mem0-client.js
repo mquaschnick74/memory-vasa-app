@@ -28,14 +28,38 @@ export default async function handler(req, res) {
       throw new Error('MemoryClient not found in mem0ai package');
     }
     
-    log('✅ MemoryClient found, creating instance...');
+    log('✅ MemoryClient found, testing different API key formats...');
     
-    // Create client with API key
-    const client = new MemoryClient({
-      api_key: process.env.MEM0_API_KEY
-    });
+    // Test different API key parameter formats
+    const apiKeyFormats = [
+      { name: 'api_key', config: { api_key: process.env.MEM0_API_KEY } },
+      { name: 'apiKey', config: { apiKey: process.env.MEM0_API_KEY } },
+      { name: 'token', config: { token: process.env.MEM0_API_KEY } },
+      { name: 'key', config: { key: process.env.MEM0_API_KEY } },
+      { name: 'auth.api_key', config: { auth: { api_key: process.env.MEM0_API_KEY } } },
+      { name: 'config.api_key', config: { config: { api_key: process.env.MEM0_API_KEY } } }
+    ];
     
-    log('✅ MemoryClient instance created');
+    let client = null;
+    let workingKeyFormat = null;
+    
+    for (const keyFormat of apiKeyFormats) {
+      try {
+        log(`🔑 Testing API key format: ${keyFormat.name}`);
+        client = new MemoryClient(keyFormat.config);
+        log(`✅ MemoryClient created successfully with ${keyFormat.name}`);
+        workingKeyFormat = keyFormat.name;
+        break;
+      } catch (keyError) {
+        log(`❌ API key format ${keyFormat.name} failed: ${keyError.message}`);
+      }
+    }
+    
+    if (!client) {
+      throw new Error('All API key formats failed');
+    }
+    
+    log(`✅ MemoryClient instance created with ${workingKeyFormat}`);
     
     const testUserId = 'client-test-' + Date.now();
     const testMessage = 'Testing MemoryClient. My name is Alex and I love programming.';
