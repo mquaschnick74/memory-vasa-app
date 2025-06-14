@@ -1,14 +1,48 @@
-// lib/firebaseMemoryManager.js - Simplified version
+// lib/firebaseMemoryManager.js - Real Firestore implementation
+import { initializeApp } from 'firebase/app';
+import { 
+  getFirestore, 
+  collection, 
+  doc, 
+  addDoc, 
+  getDoc, 
+  getDocs, 
+  updateDoc, 
+  deleteDoc, 
+  query, 
+  where, 
+  orderBy, 
+  limit 
+} from 'firebase/firestore';
+
 class FirebaseMemoryManager {
   constructor() {
-    // For now, we'll simulate Firebase operations
-    // Later we can add the actual Firebase integration
-    console.log('Firebase Memory Manager initialized (simulation mode)');
+    try {
+      // Use your existing Firebase config from environment variables
+      const firebaseConfig = {
+        apiKey: process.env.VITE_FIREBASE_API_KEY,
+        authDomain: process.env.VITE_FIREBASE_AUTH_DOMAIN,
+        projectId: process.env.VITE_FIREBASE_PROJECT_ID,
+        storageBucket: process.env.VITE_FIREBASE_STORAGE_BUCKET,
+        messagingSenderId: process.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+        appId: process.env.VITE_FIREBASE_APP_ID
+      };
+
+      console.log('Initializing Firebase with project:', firebaseConfig.projectId);
+      
+      this.app = initializeApp(firebaseConfig);
+      this.db = getFirestore(this.app);
+      
+      console.log('✅ Firebase Memory Manager initialized successfully');
+    } catch (error) {
+      console.error('❌ Firebase initialization error:', error);
+      throw error;
+    }
   }
 
   async saveConversationMemory(userId, conversationData) {
     try {
-      console.log(`Saving conversation memory for user: ${userId}`);
+      console.log(`💾 Saving conversation memory for user: ${userId}`);
       
       const memoryData = {
         userId,
@@ -19,102 +53,164 @@ class FirebaseMemoryManager {
           timestamp: new Date(),
           messageType: conversationData.message_type,
           userMessage: conversationData.message,
-          source: 'elevenlabs_webhook'
+          source: 'elevenlabs_webhook',
+          // Add therapeutic context if available
+          therapeuticContext: conversationData.therapeutic_context || null
         },
         createdAt: new Date(),
         updatedAt: new Date()
       };
 
-      console.log('Memory data prepared for Firebase:', memoryData);
-      
-      // Return simulated Firebase document ID
-      const mockDocId = `firebase_doc_${Date.now()}`;
-      console.log('Memory saved to Firebase (simulated):', mockDocId);
-      return mockDocId;
+      // Save to Firestore 'conversation_memories' collection
+      const memoryRef = collection(this.db, 'conversation_memories');
+      const docRef = await addDoc(memoryRef, memoryData);
+
+      console.log('✅ Memory saved to Firestore with ID:', docRef.id);
+      return docRef.id;
     } catch (error) {
-      console.error('Error saving memory to Firebase:', error);
+      console.error('❌ Error saving memory to Firestore:', error);
       throw error;
     }
   }
 
   async getConversationHistory(userId, conversationId) {
     try {
-      console.log(`Getting conversation history for user: ${userId}, conversation: ${conversationId}`);
+      console.log(`🔍 Getting conversation history for user: ${userId}, conversation: ${conversationId}`);
       
-      // Return simulated conversation history
-      const mockHistory = [
-        {
-          id: `history_${Date.now()}`,
-          userId,
-          conversationId,
-          messages: [
-            { role: 'user', content: 'Hello' },
-            { role: 'assistant', content: 'Hi there!' }
-          ],
-          createdAt: new Date(),
-          metadata: {
-            source: 'firebase_simulation'
-          }
-        }
-      ];
+      const memoriesRef = collection(this.db, 'conversation_memories');
+      const q = query(
+        memoriesRef,
+        where('userId', '==', userId),
+        where('conversationId', '==', conversationId),
+        orderBy('createdAt', 'desc'),
+        limit(50)
+      );
 
-      console.log(`Retrieved ${mockHistory.length} memories from Firebase (simulated)`);
-      return mockHistory;
+      const querySnapshot = await getDocs(q);
+      const memories = [];
+      
+      querySnapshot.forEach((doc) => {
+        memories.push({
+          id: doc.id,
+          ...doc.data(),
+          // Convert Firestore timestamps to ISO strings
+          createdAt: doc.data().createdAt?.toDate?.()?.toISOString() || doc.data().createdAt,
+          updatedAt: doc.data().updatedAt?.toDate?.()?.toISOString() || doc.data().updatedAt
+        });
+      });
+
+      console.log(`✅ Retrieved ${memories.length} memories from Firestore`);
+      return memories.reverse(); // Return in chronological order
     } catch (error) {
-      console.error('Error getting conversation history:', error);
+      console.error('❌ Error getting conversation history from Firestore:', error);
       throw error;
     }
   }
 
   async getUserMemories(userId, limitCount = 20) {
     try {
-      console.log(`Getting all memories for user: ${userId}`);
+      console.log(`🔍 Getting all memories for user: ${userId}`);
       
-      // Return simulated user memories
-      const mockMemories = [
-        {
-          id: `memory_${Date.now()}`,
-          userId,
-          messages: [
-            { role: 'user', content: 'I love pizza' },
-            { role: 'assistant', content: 'That\'s great! What\'s your favorite type?' }
-          ],
-          createdAt: new Date(),
-          metadata: {
-            source: 'firebase_simulation'
-          }
-        }
-      ];
+      const memoriesRef = collection(this.db, 'conversation_memories');
+      const q = query(
+        memoriesRef,
+        where('userId', '==', userId),
+        orderBy('createdAt', 'desc'),
+        limit(limitCount)
+      );
 
-      console.log(`Retrieved ${mockMemories.length} user memories from Firebase (simulated)`);
-      return mockMemories;
+      const querySnapshot = await getDocs(q);
+      const memories = [];
+      
+      querySnapshot.forEach((doc) => {
+        memories.push({
+          id: doc.id,
+          ...doc.data(),
+          // Convert Firestore timestamps to ISO strings  
+          createdAt: doc.data().createdAt?.toDate?.()?.toISOString() || doc.data().createdAt,
+          updatedAt: doc.data().updatedAt?.toDate?.()?.toISOString() || doc.data().updatedAt
+        });
+      });
+
+      console.log(`✅ Retrieved ${memories.length} user memories from Firestore`);
+      return memories;
     } catch (error) {
-      console.error('Error getting user memories:', error);
+      console.error('❌ Error getting user memories from Firestore:', error);
       throw error;
     }
   }
 
   async updateMemory(memoryId, updateData) {
     try {
-      console.log(`Updating memory: ${memoryId}`);
-      console.log('Update data:', updateData);
+      console.log(`📝 Updating memory: ${memoryId}`);
       
-      console.log('Memory updated in Firebase (simulated)');
+      const memoryRef = doc(this.db, 'conversation_memories', memoryId);
+      await updateDoc(memoryRef, {
+        ...updateData,
+        updatedAt: new Date()
+      });
+
+      console.log('✅ Memory updated in Firestore');
       return memoryId;
     } catch (error) {
-      console.error('Error updating memory in Firebase:', error);
+      console.error('❌ Error updating memory in Firestore:', error);
       throw error;
     }
   }
 
   async deleteMemory(memoryId) {
     try {
-      console.log(`Deleting memory: ${memoryId}`);
+      console.log(`🗑️ Deleting memory: ${memoryId}`);
       
-      console.log('Memory deleted from Firebase (simulated)');
+      const memoryRef = doc(this.db, 'conversation_memories', memoryId);
+      await deleteDoc(memoryRef);
+
+      console.log('✅ Memory deleted from Firestore');
       return memoryId;
     } catch (error) {
-      console.error('Error deleting memory from Firebase:', error);
+      console.error('❌ Error deleting memory from Firestore:', error);
+      throw error;
+    }
+  }
+
+  // Additional method for therapeutic-specific queries
+  async getTherapeuticSessions(userId, filters = {}) {
+    try {
+      console.log(`🧠 Getting therapeutic sessions for user: ${userId}`);
+      
+      const memoriesRef = collection(this.db, 'conversation_memories');
+      let q = query(
+        memoriesRef,
+        where('userId', '==', userId),
+        orderBy('createdAt', 'desc')
+      );
+
+      // Add filters if provided
+      if (filters.therapyStage) {
+        q = query(q, where('metadata.therapeuticContext.therapy_stage', '==', filters.therapyStage));
+      }
+
+      if (filters.sessionType) {
+        q = query(q, where('metadata.therapeuticContext.session_type', '==', filters.sessionType));
+      }
+
+      const querySnapshot = await getDocs(q);
+      const sessions = [];
+      
+      querySnapshot.forEach((doc) => {
+        const data = doc.data();
+        sessions.push({
+          id: doc.id,
+          ...data,
+          createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
+          updatedAt: data.updatedAt?.toDate?.()?.toISOString() || data.updatedAt
+        });
+      });
+
+      console.log(`✅ Retrieved ${sessions.length} therapeutic sessions from Firestore`);
+      return sessions;
+    } catch (error) {
+      console.error('❌ Error getting therapeutic sessions from Firestore:', error);
       throw error;
     }
   }
