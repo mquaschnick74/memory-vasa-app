@@ -5,8 +5,8 @@
   "type": "module",
   "scripts": {
     "start": "node server/index.js",
-    "dev": "node server/index.js",
-    "build": "echo 'No build step required for serverless functions'",
+    "dev": "node server/index.js", 
+    "build": "mkdir -p public && echo 'API-only project - no build required'",
     "test": "node test/test-mem0.js"
   },
   "dependencies": {
