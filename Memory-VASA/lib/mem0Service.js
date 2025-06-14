@@ -1,4 +1,4 @@
-// lib/mem0Service.js - Fixed Mem0 service with comprehensive import handling
+// lib/mem0Service.js - FIXED with correct MemoryClient usage
 import OpenAI from 'openai';
 
 class Mem0Service {
@@ -34,128 +34,27 @@ class Mem0Service {
         return;
       }
 
-      // Try multiple import strategies for mem0ai
-      let mem0ai = null;
-      const importStrategies = [
-        async () => {
-          console.log('📦 Trying import strategy 1: default import mem0ai');
-          return await import('mem0ai');
-        },
-        async () => {
-          console.log('📦 Trying import strategy 2: destructured import');
-          const { Memory } = await import('mem0ai');
-          return { Memory };
-        },
-        async () => {
-          console.log('📦 Trying import strategy 3: dynamic require fallback');
-          const mem0Module = await import('mem0ai');
-          return mem0Module.default || mem0Module;
-        }
-      ];
-
-      for (const strategy of importStrategies) {
-        try {
-          mem0ai = await strategy();
-          if (mem0ai) {
-            console.log('✅ Successfully imported mem0ai package');
-            break;
-          }
-        } catch (strategyError) {
-          console.log(`❌ Import strategy failed: ${strategyError.message}`);
-          continue;
-        }
-      }
-
-      if (!mem0ai) {
-        this.initializationError = 'All mem0ai import strategies failed';
-        console.log('❌', this.initializationError);
-        return;
-      }
-
-      // Try to find the Memory class in different locations
-      const memoryClassCandidates = [
-        mem0ai.MemoryClient,    // This is the correct one!
-        mem0ai.Memory,          // Keep as fallback
-        mem0ai.default?.MemoryClient,
-        mem0ai.default?.Memory,
-        mem0ai.Client,
-        mem0ai.default?.Client,
-        mem0ai.default         // Try default export directly
-      ];
-
-      let MemoryClass = null;
-      for (const candidate of memoryClassCandidates) {
-        if (candidate && typeof candidate === 'function') {
-          MemoryClass = candidate;
-          console.log('✅ Found Memory class');
-          break;
-        }
-      }
-
-      if (!MemoryClass) {
-        // Enhanced debugging - show what's actually available
-        const availableKeys = Object.keys(mem0ai);
-        const availableDefaultKeys = mem0ai.default ? Object.keys(mem0ai.default) : [];
-        
-        this.initializationError = `Memory class not found. Available in mem0ai: [${availableKeys.join(', ')}]. Available in mem0ai.default: [${availableDefaultKeys.join(', ')}]`;
-        console.log('❌', this.initializationError);
-        
-        // Try to find any constructor-like functions
-        for (const key of availableKeys) {
-          if (typeof mem0ai[key] === 'function') {
-            console.log(`🔍 Found function: ${key}`, typeof mem0ai[key]);
-          }
-        }
-        
-        return;
-      }
-
-      // Try to initialize the Memory instance
-      console.log('🔄 Creating Memory instance...');
+      // Import MemoryClient (we know this works)
+      console.log('📦 Importing MemoryClient...');
+      const { MemoryClient } = await import('mem0ai');
       
-      // Try different initialization patterns
-      const initializationConfigs = [
-        // Config 1: Just API key
-        {
-          api_key: this.mem0ApiKey
-        },
-        // Config 2: API key with config object
-        {
-          api_key: this.mem0ApiKey,
-          config: {
-            llm: {
-              provider: "openai",
-              config: {
-                model: process.env.MEM0_LLM_MODEL || "gpt-4o-mini",
-                api_key: process.env.OPENAI_API_KEY
-              }
-            }
-          }
-        },
-        // Config 3: Different structure
-        {
-          apiKey: this.mem0ApiKey
-        }
-      ];
-
-      for (const config of initializationConfigs) {
-        try {
-          this.memory = new MemoryClass(config);
-          console.log('✅ Memory instance created successfully');
-          break;
-        } catch (configError) {
-          console.log(`❌ Config failed: ${configError.message}`);
-          continue;
-        }
-      }
-
-      if (!this.memory) {
-        this.initializationError = 'Failed to create Memory instance with any configuration';
+      if (!MemoryClient) {
+        this.initializationError = 'MemoryClient not found in mem0ai package';
         console.log('❌', this.initializationError);
         return;
       }
+      
+      console.log('✅ MemoryClient found');
 
-      // Test the connection with a simple operation
+      // Create client with correct format (we know this works)
+      console.log('🔄 Creating MemoryClient instance...');
+      this.memory = new MemoryClient({
+        apiKey: this.mem0ApiKey
+      });
+      
+      console.log('✅ MemoryClient instance created');
+
+      // Test the connection with correct ARRAY format
       await this.testConnection();
       
     } catch (error) {
@@ -168,63 +67,26 @@ class Mem0Service {
     try {
       console.log('🧪 Testing Mem0 connection...');
       
-      // Try different API call formats to find the correct one
       const testUserId = 'connection-test-' + Date.now();
       
-      // Try format 1: messages, user_id, metadata
+      // Use ARRAY format based on error analysis
+      const testResult = await this.memory.add(
+        [{ role: 'user', content: 'Connection test message' }],  // ARRAY format!
+        testUserId
+      );
+      
+      console.log('✅ Mem0 connection successful!', testResult);
+      this.mem0Available = true;
+      
+      // Clean up test memory if possible
       try {
-        const testResult = await this.memory.add(
-          'Connection test message',
-          testUserId,
-          {
-            metadata: {
-              test: true,
-              timestamp: new Date().toISOString()
-            }
-          }
-        );
-        
-        console.log('✅ Mem0 connection successful (format 1)!', testResult);
-        this.mem0Available = true;
-        return await this.cleanupTestMemory(testResult);
-        
-      } catch (format1Error) {
-        console.log('❌ Format 1 failed:', format1Error.message);
-        
-        // Try format 2: different parameter structure
-        try {
-          const testResult = await this.memory.add({
-            messages: 'Connection test message',
-            user_id: testUserId,
-            metadata: {
-              test: true,
-              timestamp: new Date().toISOString()
-            }
-          });
-          
-          console.log('✅ Mem0 connection successful (format 2)!', testResult);
-          this.mem0Available = true;
-          return await this.cleanupTestMemory(testResult);
-          
-        } catch (format2Error) {
-          console.log('❌ Format 2 failed:', format2Error.message);
-          
-          // Try format 3: minimal parameters
-          try {
-            const testResult = await this.memory.add({
-              text: 'Connection test message',
-              user_id: testUserId
-            });
-            
-            console.log('✅ Mem0 connection successful (format 3)!', testResult);
-            this.mem0Available = true;
-            return await this.cleanupTestMemory(testResult);
-            
-          } catch (format3Error) {
-            console.log('❌ All formats failed');
-            throw new Error(`All API formats failed. Last error: ${format3Error.message}`);
-          }
+        if (testResult.id || testResult.memory_id) {
+          const memoryId = testResult.id || testResult.memory_id;
+          await this.memory.delete(memoryId);
+          console.log('🧹 Test memory cleaned up');
         }
+      } catch (cleanupError) {
+        console.log('⚠️ Cleanup warning:', cleanupError.message);
       }
       
     } catch (error) {
@@ -240,33 +102,35 @@ class Mem0Service {
     }
   }
 
-  async cleanupTestMemory(testResult) {
-    try {
-      if (testResult.id || testResult.memory_id) {
-        const memoryId = testResult.id || testResult.memory_id;
-        await this.memory.delete(memoryId);
-        console.log('🧹 Test memory cleaned up');
-      }
-    } catch (cleanupError) {
-      console.log('⚠️ Cleanup warning:', cleanupError.message);
-    }
-    return testResult;
-  }
-
   async addMemory(userId, conversationData, metadata = {}) {
     try {
       console.log(`🧠 Adding memory for user: ${userId}`);
       console.log('🔍 Mem0 available:', this.mem0Available);
       
       if (this.mem0Available && this.memory) {
-        // Use real Mem0 - format the messages properly
-        const messagesText = conversationData.messages
-          .map(msg => `${msg.role}: ${msg.content}`)
-          .join('\n');
-        
+        // Use real Mem0 with correct ARRAY format
         console.log('🔄 Using real Mem0 service...');
+        
+        // Ensure messages is an array
+        let messages = conversationData.messages || [];
+        if (!Array.isArray(messages)) {
+          // Convert single message to array format
+          messages = [{ role: 'user', content: String(messages) }];
+        }
+        
+        // Ensure all messages have proper format
+        messages = messages.map(msg => {
+          if (typeof msg === 'string') {
+            return { role: 'user', content: msg };
+          }
+          return {
+            role: msg.role || 'user',
+            content: msg.content || msg.message || String(msg)
+          };
+        });
+        
         const result = await this.memory.add(
-          messagesText,
+          messages,  // ARRAY format - this is the key!
           userId,
           {
             metadata: {
