@@ -217,7 +217,7 @@ class Mem0Service {
       
       if (this.mem0Available && this.memory) {
         console.log('🔄 Using real Mem0 retrieval...');
-        const memories = await this.memory.get_all({ user_id: userId }, { limit });
+        const memories = await this.memory.list({ user_id: userId }, { limit });
         console.log('✅ Mem0 memories retrieved:', memories);
         return {
           ...memories,
