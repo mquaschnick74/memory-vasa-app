@@ -1,5 +1,5 @@
 // lib/mem0Service.js
-import { Memory } from 'mem0ai';
+import mem0ai from 'mem0ai';
 import OpenAI from 'openai';
 
 class Mem0Service {
@@ -8,7 +8,8 @@ class Mem0Service {
       apiKey: process.env.OPENAI_API_KEY
     });
     
-    this.memory = new Memory({
+    // Use the correct mem0ai initialization
+    this.memory = new mem0ai.Memory({
       config: {
         llm: {
           provider: "openai",
@@ -22,13 +23,6 @@ class Mem0Service {
           config: {
             model: process.env.MEM0_EMBEDDING_MODEL || "text-embedding-3-small",
             api_key: process.env.OPENAI_API_KEY
-          }
-        },
-        vector_store: {
-          provider: "qdrant",
-          config: {
-            host: "localhost",
-            port: 6333
           }
         }
       }
