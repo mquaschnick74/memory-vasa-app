@@ -1,5 +1,7 @@
 {
   "version": 2,
+  "buildCommand": "",
+  "outputDirectory": "public",
   "functions": {
     "api/**/*.js": {
       "runtime": "nodejs18.x",
@@ -8,6 +10,10 @@
     }
   },
   "rewrites": [
+    {
+      "source": "/",
+      "destination": "/api/status"
+    },
     {
       "source": "/api/(.*)",
       "destination": "/api/$1"
