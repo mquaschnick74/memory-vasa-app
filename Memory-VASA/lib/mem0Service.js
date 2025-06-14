@@ -217,13 +217,58 @@ class Mem0Service {
       
       if (this.mem0Available && this.memory) {
         console.log('🔄 Using real Mem0 retrieval...');
-        const memories = await this.memory.list({ user_id: userId }, { limit });
-        console.log('✅ Mem0 memories retrieved:', memories);
-        return {
-          ...memories,
-          mode: 'mem0',
-          service: 'real_mem0'
-        };
+        
+        // 🆕 FIXED: Use search with empty query instead of list()
+        try {
+          // Try different methods to get all memories
+          let memories;
+          
+          // Method 1: Try getAll if it exists
+          if (typeof this.memory.getAll === 'function') {
+            console.log('📋 Trying getAll method...');
+            memories = await this.memory.getAll({ user_id: userId }, { limit });
+          } else {
+            // Method 2: Use search with empty query to get all memories
+            console.log('🔍 Using search with empty query to get all memories...');
+            memories = await this.memory.search(
+              '', // Empty query to get all memories
+              { user_id: userId },
+              { limit }
+            );
+          }
+          
+          console.log('✅ Mem0 memories retrieved:', memories);
+          return {
+            ...memories,
+            mode: 'mem0',
+            service: 'real_mem0'
+          };
+          
+        } catch (listError) {
+          console.log('⚠️ Direct memory retrieval failed, trying alternative:', listError.message);
+          
+          // Method 3: Try search with broad query
+          try {
+            console.log('🔍 Trying search with broad query...');
+            const alternativeResults = await this.memory.search(
+              'conversation memory therapeutic session', // Broad query
+              { user_id: userId },
+              { limit }
+            );
+            
+            console.log('✅ Alternative search successful:', alternativeResults);
+            return {
+              ...alternativeResults,
+              mode: 'mem0',
+              service: 'real_mem0',
+              method: 'search_fallback'
+            };
+            
+          } catch (searchError) {
+            console.log('❌ All Mem0 methods failed, using fallback:', searchError.message);
+            throw new Error(`Mem0 retrieval failed: ${listError.message}, ${searchError.message}`);
+          }
+        }
       } else {
         console.log('🔄 Using retrieval fallback...');
         const fallbackMemories = {
