@@ -72,7 +72,7 @@ class Mem0Service {
       // Use ARRAY format based on error analysis
       const testResult = await this.memory.add(
         [{ role: 'user', content: 'Connection test message' }],  // ARRAY format!
-        testUserId
+        { user_id: testUserId }  // OBJECT format for userId!
       );
       
       console.log('✅ Mem0 connection successful!', testResult);
@@ -131,7 +131,7 @@ class Mem0Service {
         
         const result = await this.memory.add(
           messages,  // ARRAY format - this is the key!
-          userId,
+          { user_id: userId },  // OBJECT format for userId!
           {
             metadata: {
               agent_id: conversationData.agent_id,
@@ -185,7 +185,7 @@ class Mem0Service {
         console.log('🔄 Using real Mem0 search...');
         const results = await this.memory.search(
           query,
-          userId,
+          { user_id: userId },  // OBJECT format for userId!
           { limit }
         );
         console.log('✅ Mem0 search completed:', results);
@@ -217,7 +217,7 @@ class Mem0Service {
       
       if (this.mem0Available && this.memory) {
         console.log('🔄 Using real Mem0 retrieval...');
-        const memories = await this.memory.get_all(userId, { limit });
+        const memories = await this.memory.get_all({ user_id: userId }, { limit });
         console.log('✅ Mem0 memories retrieved:', memories);
         return {
           ...memories,
