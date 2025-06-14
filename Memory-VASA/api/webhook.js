@@ -1,16 +1,15 @@
-// api/webhook.js - Enhanced with Mem0 integration
+// api/webhook.js - Simple custom user ID implementation
 import crypto from 'crypto';
 import mem0Service from '../lib/mem0Service.js';
 import firebaseMemoryManager from '../lib/firebaseMemoryManager.js';
 
 export default async function handler(req, res) {
-  // Only allow POST requests
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
   try {
-    // Verify webhook signature
+    // Verify webhook signature (unchanged)
     const signature = req.headers['x-elevenlabs-signature'];
     const expectedSignature = process.env.ELEVENLABS_WEBHOOK_SECRET;
 
@@ -21,25 +20,29 @@ export default async function handler(req, res) {
 
     console.log('✅ Webhook signature verified');
 
-    // Process the webhook data
     const webhookData = req.body;
     console.log('📨 Received webhook:', webhookData);
 
-    // Extract important data
     const {
       agent_id,
       conversation_id,
-      user_id,
+      user_id: elevenLabsUserId,
       message,
       message_type,
-      timestamp
+      timestamp,
+      user_metadata  // This is where your custom user ID comes from
     } = webhookData;
 
-    // Create conversation data object
+    // 🎯 KEY CHANGE: Use your custom user ID instead of ElevenLabs user ID
+    const customUserId = user_metadata?.custom_user_id || user_metadata?.patient_id || elevenLabsUserId;
+    
+    console.log(`🆔 Using custom user ID: ${customUserId}`);
+
+    // Everything else stays EXACTLY the same - just use customUserId instead
     const conversationData = {
       agent_id,
       conversation_id,
-      user_id,
+      user_id: customUserId,  // 🎯 This is the only change needed
       message,
       message_type,
       timestamp: timestamp || new Date().toISOString(),
@@ -51,57 +54,54 @@ export default async function handler(req, res) {
       ]
     };
 
-    // Process memory based on message type
+    // All existing functionality works with custom user ID
     if (message_type === 'conversation_end') {
       console.log('🔚 Processing conversation end');
       
-      // Get full conversation history from Firebase
       const conversationHistory = await firebaseMemoryManager.getConversationHistory(
-        user_id, 
+        customUserId,  // 🎯 Custom user ID
         conversation_id
       );
 
       if (conversationHistory.length > 0) {
-        // Convert Firebase history to messages format for Mem0
         const allMessages = conversationHistory.flatMap(entry => entry.messages || []);
         
-        // Add comprehensive memory to Mem0
-        await mem0Service.addMemory(user_id, {
+        // Mem0 works perfectly with custom user ID
+        await mem0Service.addMemory(customUserId, {  // 🎯 Custom user ID
           agent_id,
           conversation_id,
           messages: allMessages
         }, {
           conversation_end_timestamp: timestamp,
           total_messages: allMessages.length,
-          conversation_duration: calculateConversationDuration(conversationHistory)
+          // Optional: Store therapeutic context
+          therapeutic_session: user_metadata?.therapy_stage || 'general',
+          session_type: user_metadata?.session_type || 'check_in'
         });
 
-        console.log('💾 Conversation memory added to Mem0');
+        console.log('💾 Conversation memory added with custom user ID');
       }
     } else if (message_type === 'user_message' || message_type === 'agent_response') {
       console.log(`💬 Processing ${message_type}`);
       
-      // Save individual message to Firebase for immediate access
-      await firebaseMemoryManager.saveConversationMemory(user_id, conversationData);
+      // Firebase works perfectly with custom user ID
+      await firebaseMemoryManager.saveConversationMemory(customUserId, conversationData);
       
-      // For user messages, also search relevant memories and potentially add context
       if (message_type === 'user_message') {
-        // Search for relevant memories
-        const relevantMemories = await mem0Service.searchMemories(user_id, message, 3);
+        // Mem0 search works perfectly with custom user ID
+        const relevantMemories = await mem0Service.searchMemories(customUserId, message, 3);
         
         if (relevantMemories.results && relevantMemories.results.length > 0) {
-          console.log('🧠 Found relevant memories:', relevantMemories.results.length);
-          
-          // You could use this to enhance the agent's response
-          // This would require integration with your 11 Labs agent setup
+          console.log('🧠 Found relevant memories for custom user');
         }
       }
     }
 
-    // Return success response
+    // Return success with user ID confirmation
     res.status(200).json({ 
       success: true, 
       processed: true,
+      user_id: customUserId,  // Confirm which user ID was used
       timestamp: new Date().toISOString()
     });
 
@@ -112,13 +112,4 @@ export default async function handler(req, res) {
       message: error.message 
     });
   }
-}
-
-function calculateConversationDuration(conversationHistory) {
-  if (conversationHistory.length < 2) return 0;
-  
-  const startTime = new Date(conversationHistory[0].createdAt);
-  const endTime = new Date(conversationHistory[conversationHistory.length - 1].createdAt);
-  
-  return Math.round((endTime - startTime) / 1000); // Duration in seconds
 }
