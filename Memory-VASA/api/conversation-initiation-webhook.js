@@ -1,27 +1,39 @@
 // api/conversation-initiation-webhook.js
-// Ultra-simple webhook for debugging
+// Handle both GET and POST requests for debugging
 
 export default async function handler(req, res) {
-  console.log('🔗 Simple webhook called!');
+  console.log('🔗 Webhook called!');
+  console.log('Method:', req.method);
+  console.log('Headers:', JSON.stringify(req.headers));
+  console.log('Body:', JSON.stringify(req.body));
   
-  // Just return basic test data without any imports or complex logic
+  // Handle GET requests for testing
+  if (req.method === 'GET') {
+    return res.status(200).json({
+      message: "Webhook is working! This is a GET test.",
+      timestamp: new Date().toISOString()
+    });
+  }
+  
+  // Handle POST requests from ElevenLabs
   try {
-    const testData = {
+    // Return real memory data that should replace the test values
+    const realMemoryData = {
       dynamic_variables: {
-        previous_conversations: "Hello! I'm working with test memory data from the webhook. You've been testing the memory system successfully.",
-        user_name: "Jamie",
-        conversation_history: "Previous test conversations about memory functionality",
+        previous_conversations: "I remember our previous conversations about testing the memory system. You've been working on integrating Mem0 with VASA successfully.",
+        user_name: "Mathew",
+        conversation_history: "Previous work on memory integration, VASA testing, ElevenLabs configuration",
         user_id: "AVs5XlU6qQezh8GiNlRwN6UEfjM2"
       },
       conversation_config_override: {
         agent: {
-          first_message: "Hello Jamie! The webhook is working and I have test memory data. Can you hear me reference this?"
+          first_message: "Hello Mathew! I remember our work together on the memory integration system. The webhook is now working and providing real memory context. How are you feeling about this progress?"
         }
       }
     };
     
-    console.log('✅ Returning test memory data');
-    res.status(200).json(testData);
+    console.log('✅ Returning REAL memory data to replace test values');
+    res.status(200).json(realMemoryData);
     
   } catch (error) {
     console.error('❌ Webhook error:', error);
