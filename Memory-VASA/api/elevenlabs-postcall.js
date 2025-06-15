@@ -1,24 +1,16 @@
-// api/elevenlabs-postcall.js (or api/webhook.js)
-// Receives real VASA conversations from ElevenLabs and stores them in Mem0
-
-import { mem0Service } from '../lib/mem0Service.js';
-import crypto from 'crypto';
+// api/elevenlabs-postcall.js
+// Store real VASA conversations in Mem0 after they end
 
 export default async function handler(req, res) {
-  console.log('📞 ElevenLabs post-call webhook - REAL conversation data received');
+  console.log('📞 POST-CALL WEBHOOK: Real conversation ended');
+  console.log('Method:', req.method);
+  console.log('Time:', new Date().toISOString());
   
   try {
-    // Optional: Verify webhook signature for security
-    const signature = req.headers['elevenlabs-signature'] || req.headers['x-webhook-secret'];
-    if (signature && process.env.ELEVENLABS_WEBHOOK_SECRET) {
-      // Verify HMAC signature here if needed
-      console.log('🔐 Webhook signature present, verification can be added');
-    }
-    
     const { data } = req.body;
     
     if (!data) {
-      console.log('⚠️ No data in webhook payload');
+      console.log('⚠️ No conversation data received');
       return res.status(200).json({ success: false, message: 'No data received' });
     }
     
@@ -30,86 +22,101 @@ export default async function handler(req, res) {
       metadata
     } = data;
     
-    console.log('🔍 Conversation details:');
+    console.log('📋 Conversation details:');
     console.log('- Conversation ID:', conversation_id);
     console.log('- Transcript entries:', transcript?.length || 0);
     console.log('- Analysis available:', !!analysis);
-    console.log('- Metadata:', metadata);
     
-    // Your user ID (you might want to extract this from dynamic variables later)
+    // Your user ID
     const userUUID = 'AVs5XlU6qQezh8GiNlRwN6UEfjM2';
     
     if (!transcript || transcript.length === 0) {
-      console.log('⚠️ No transcript available - conversation may have been too short');
+      console.log('⚠️ No transcript - conversation too short or failed');
       return res.status(200).json({ success: true, message: 'No transcript to store' });
     }
     
     try {
-      console.log('💾 Processing transcript for Mem0 storage...');
+      console.log('💾 Storing REAL conversation in Mem0...');
       
       // Convert transcript to readable format
       const conversationText = transcript.map((entry, index) => {
         const role = entry.role === 'agent' ? 'VASA' : 'User';
-        return `${role}: ${entry.content}`;
+        const content = entry.content || entry.message || 'No content';
+        return `${role}: ${content}`;
       }).join('\n');
       
-      console.log('📝 Formatted conversation:', conversationText.substring(0, 200) + '...');
+      console.log('📝 Conversation preview:', conversationText.substring(0, 200) + '...');
       
-      // Store in Mem0 with metadata
-      const memoryResult = await mem0Service.addMemory(
-        conversationText,
-        userUUID,
-        {
-          source: 'elevenlabs_voice_conversation',
+      // Store conversation using simple fetch to your existing Mem0 API
+      const memoryPayload = {
+        text: conversationText,
+        user_id: userUUID,
+        metadata: {
+          source: 'elevenlabs_real_conversation',
           conversation_id: conversation_id,
           timestamp: new Date().toISOString(),
           transcript_length: transcript.length,
-          call_successful: analysis?.call_successful,
-          summary: analysis?.transcript_summary,
-          type: 'real_voice_conversation'
+          type: 'voice_conversation_real'
         }
-      );
+      };
       
-      console.log('✅ REAL conversation stored in Mem0:', {
-        memory_id: memoryResult?.id,
-        user_id: userUUID,
-        conversation_id: conversation_id,
-        stored_content_length: conversationText.length
+      // Call your existing Mem0 API endpoint
+      const memoryResponse = await fetch('https://www.ivasa-ai.com/api/add-memory', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(memoryPayload)
       });
       
-      // Also store conversation summary if available
-      if (analysis?.transcript_summary) {
-        const summaryResult = await mem0Service.addMemory(
-          `Conversation summary: ${analysis.transcript_summary}`,
-          userUUID,
-          {
-            source: 'elevenlabs_conversation_summary',
-            conversation_id: conversation_id,
-            type: 'conversation_summary',
-            timestamp: new Date().toISOString()
-          }
-        );
+      const memoryResult = await memoryResponse.json();
+      
+      if (memoryResult.success) {
+        console.log('✅ REAL conversation stored in Mem0:', {
+          memory_id: memoryResult.memory_id,
+          conversation_id: conversation_id,
+          content_length: conversationText.length
+        });
         
-        console.log('✅ Conversation summary also stored:', summaryResult?.id);
+        // Also store summary if available
+        if (analysis?.transcript_summary) {
+          const summaryPayload = {
+            text: `Conversation summary: ${analysis.transcript_summary}`,
+            user_id: userUUID,
+            metadata: {
+              source: 'elevenlabs_conversation_summary',
+              conversation_id: conversation_id,
+              type: 'conversation_summary'
+            }
+          };
+          
+          await fetch('https://www.ivasa-ai.com/api/add-memory', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(summaryPayload)
+          });
+          
+          console.log('✅ Conversation summary also stored');
+        }
+        
+        res.status(200).json({
+          success: true,
+          message: 'REAL conversation stored in Mem0 successfully',
+          details: {
+            memory_id: memoryResult.memory_id,
+            conversation_id: conversation_id,
+            stored_content_length: conversationText.length,
+            transcript_entries: transcript.length
+          }
+        });
+        
+      } else {
+        console.error('❌ Failed to store in Mem0:', memoryResult);
+        throw new Error('Mem0 storage failed: ' + memoryResult.error);
       }
       
-      // Success response
-      res.status(200).json({
-        success: true,
-        message: 'Real VASA conversation stored in Mem0 successfully',
-        details: {
-          memory_id: memoryResult?.id,
-          user_id: userUUID,
-          conversation_id: conversation_id,
-          transcript_entries: transcript.length,
-          stored_in_mem0: true
-        }
-      });
-      
     } catch (memoryError) {
-      console.error('❌ Error storing conversation in Mem0:', memoryError);
+      console.error('❌ Error storing conversation:', memoryError);
       
-      // Still return 200 to ElevenLabs to prevent webhook from being disabled
+      // Still return 200 to prevent ElevenLabs from disabling webhook
       res.status(200).json({
         success: false,
         message: 'Error storing conversation in Mem0',
@@ -119,13 +126,12 @@ export default async function handler(req, res) {
     }
     
   } catch (error) {
-    console.error('❌ Post-call webhook processing error:', error);
-    console.error('Request body:', JSON.stringify(req.body, null, 2));
+    console.error('❌ Post-call webhook error:', error);
     
-    // Always return 200 to prevent ElevenLabs from disabling the webhook
+    // Always return 200 to prevent webhook from being disabled
     res.status(200).json({
       success: false,
-      message: 'Webhook processing error',
+      message: 'Post-call webhook processing error',
       error: error.message
     });
   }
