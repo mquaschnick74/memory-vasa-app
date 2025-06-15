@@ -1,7 +1,5 @@
 // api/elevenlabs-postcall.js
-// Store real VASA conversations in Mem0 using mem0Service directly
-
-import { mem0Service } from '../lib/mem0Service.js';
+// Store real VASA conversations in Mem0 - fixed import
 
 export default async function handler(req, res) {
   console.log('📞 POST-CALL WEBHOOK: Real conversation ended');
@@ -38,7 +36,7 @@ export default async function handler(req, res) {
     }
     
     try {
-      console.log('💾 Storing REAL conversation in Mem0 using mem0Service...');
+      console.log('💾 Processing REAL conversation for Mem0 storage...');
       
       // Convert transcript to readable format
       const conversationText = transcript.map((entry, index) => {
@@ -47,53 +45,71 @@ export default async function handler(req, res) {
         return `${role}: ${content}`;
       }).join('\n');
       
-      console.log('📝 Conversation preview:', conversationText.substring(0, 200) + '...');
+      console.log('📝 REAL Conversation content:', conversationText.substring(0, 300) + '...');
       
-      // Store conversation using mem0Service directly
-      const memoryResult = await mem0Service.addMemory(
-        conversationText,
-        userUUID,
-        {
+      // Use the same mem0 approach as your working endpoints
+      // Import mem0 client directly like your other working files do
+      const { MemoryClient } = await import('mem0ai');
+      
+      const mem0 = new MemoryClient({
+        apiKey: process.env.MEM0_API_KEY
+      });
+      
+      console.log('🔗 Mem0 client created, storing conversation...');
+      
+      // Store the real conversation
+      const memoryResult = await mem0.add({
+        messages: [{
+          role: 'user',
+          content: conversationText
+        }],
+        user_id: userUUID,
+        metadata: {
           source: 'elevenlabs_real_conversation',
           conversation_id: conversation_id,
           timestamp: new Date().toISOString(),
           transcript_length: transcript.length,
-          call_successful: analysis?.call_successful,
-          summary: analysis?.transcript_summary,
           type: 'voice_conversation_real'
         }
-      );
+      });
       
-      console.log('✅ REAL conversation stored in Mem0:', {
+      console.log('✅ REAL conversation stored in Mem0!', {
         memory_id: memoryResult?.id,
         conversation_id: conversation_id,
-        content_length: conversationText.length
+        content_length: conversationText.length,
+        memories_created: memoryResult?.results?.length
       });
       
       // Also store summary if available
       if (analysis?.transcript_summary) {
-        const summaryResult = await mem0Service.addMemory(
-          `Conversation summary: ${analysis.transcript_summary}`,
-          userUUID,
-          {
+        console.log('💾 Storing conversation summary...');
+        
+        const summaryResult = await mem0.add({
+          messages: [{
+            role: 'assistant',
+            content: `Conversation summary: ${analysis.transcript_summary}`
+          }],
+          user_id: userUUID,
+          metadata: {
             source: 'elevenlabs_conversation_summary',
             conversation_id: conversation_id,
             type: 'conversation_summary',
             timestamp: new Date().toISOString()
           }
-        );
+        });
         
         console.log('✅ Conversation summary also stored:', summaryResult?.id);
       }
       
       res.status(200).json({
         success: true,
-        message: 'REAL conversation stored in Mem0 successfully',
+        message: 'REAL conversation stored in Mem0 successfully!',
         details: {
           memory_id: memoryResult?.id,
           conversation_id: conversation_id,
           stored_content_length: conversationText.length,
-          transcript_entries: transcript.length
+          transcript_entries: transcript.length,
+          memories_created: memoryResult?.results?.length || 1
         }
       });
       
