@@ -1,5 +1,5 @@
 // api/elevenlabs-postcall.js
-// Store real VASA conversations in Mem0 - fixed import
+// Store real VASA conversations in Mem0 - corrected API format
 
 export default async function handler(req, res) {
   console.log('📞 POST-CALL WEBHOOK: Real conversation ended');
@@ -47,56 +47,48 @@ export default async function handler(req, res) {
       
       console.log('📝 REAL Conversation content:', conversationText.substring(0, 300) + '...');
       
-      // Use the same mem0 approach as your working endpoints
-      // Import mem0 client directly like your other working files do
+      // Import mem0 client
       const { MemoryClient } = await import('mem0ai');
-      
       const mem0 = new MemoryClient({
         apiKey: process.env.MEM0_API_KEY
       });
       
-      console.log('🔗 Mem0 client created, storing conversation...');
+      console.log('🔗 Mem0 client created, storing conversation with simple format...');
       
-      // Store the real conversation
-      const memoryResult = await mem0.add({
-        messages: [{
-          role: 'user',
-          content: conversationText
-        }],
-        user_id: userUUID,
-        metadata: {
+      // Use simple text-based format instead of messages format
+      const memoryResult = await mem0.add(
+        conversationText,  // Just pass the text directly
+        userUUID,         // User ID as second parameter
+        {                 // Metadata as third parameter
           source: 'elevenlabs_real_conversation',
           conversation_id: conversation_id,
           timestamp: new Date().toISOString(),
           transcript_length: transcript.length,
           type: 'voice_conversation_real'
         }
-      });
+      );
       
-      console.log('✅ REAL conversation stored in Mem0!', {
+      console.log('✅ SUCCESS! REAL conversation stored in Mem0!', {
         memory_id: memoryResult?.id,
         conversation_id: conversation_id,
         content_length: conversationText.length,
-        memories_created: memoryResult?.results?.length
+        result: memoryResult
       });
       
       // Also store summary if available
       if (analysis?.transcript_summary) {
         console.log('💾 Storing conversation summary...');
         
-        const summaryResult = await mem0.add({
-          messages: [{
-            role: 'assistant',
-            content: `Conversation summary: ${analysis.transcript_summary}`
-          }],
-          user_id: userUUID,
-          metadata: {
+        const summaryResult = await mem0.add(
+          `Conversation summary: ${analysis.transcript_summary}`,
+          userUUID,
+          {
             source: 'elevenlabs_conversation_summary',
             conversation_id: conversation_id,
             type: 'conversation_summary',
             timestamp: new Date().toISOString()
           }
-        });
+        );
         
         console.log('✅ Conversation summary also stored:', summaryResult?.id);
       }
@@ -108,13 +100,17 @@ export default async function handler(req, res) {
           memory_id: memoryResult?.id,
           conversation_id: conversation_id,
           stored_content_length: conversationText.length,
-          transcript_entries: transcript.length,
-          memories_created: memoryResult?.results?.length || 1
+          transcript_entries: transcript.length
         }
       });
       
     } catch (memoryError) {
       console.error('❌ Error storing conversation in Mem0:', memoryError);
+      console.error('Error details:', {
+        name: memoryError.name,
+        message: memoryError.message,
+        stack: memoryError.stack
+      });
       
       // Still return 200 to prevent ElevenLabs from disabling webhook
       res.status(200).json({
