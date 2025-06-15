@@ -20,6 +20,19 @@ const VASAWorkingInterface = () => {
 
   const loadUserMemoryContext = async () => {
     try {
+      // First check if Mem0 is working using the proven webhook test
+      const statusResponse = await fetch('/api/webhook?test=true');
+      const statusResult = await statusResponse.json();
+      
+      console.log('🔍 Mem0 status check:', statusResult);
+      
+      if (statusResult.mem0_working) {
+        setConnectionStatus('ready');
+      } else {
+        setConnectionStatus('fallback');
+      }
+
+      // Then get user memory context
       const response = await fetch('/api/get-conversation-context', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -29,11 +42,11 @@ const VASAWorkingInterface = () => {
         })
       });
       const result = await response.json();
+      
+      console.log('🧠 Memory context result:', result);
+      
       if (result.success) {
         setMemoryContext(result);
-        setConnectionStatus('ready');
-      } else {
-        setConnectionStatus('fallback');
       }
     } catch (error) {
       console.error('Memory context load failed:', error);
@@ -362,11 +375,14 @@ const VASAWorkingInterface = () => {
     useEffect(() => {
       const loadData = async () => {
         try {
+          // Use the WORKING webhook test endpoint
           const response = await fetch('/api/webhook?test=true');
           const result = await response.json();
           setRealMemories(result);
+          console.log('✅ Debug data loaded:', result);
         } catch (error) {
-          console.error('Failed to load data:', error);
+          console.error('❌ Failed to load debug data:', error);
+          setRealMemories({ error: error.message });
         }
         setLoading(false);
       };
