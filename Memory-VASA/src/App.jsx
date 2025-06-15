@@ -1,5 +1,5 @@
 import React from 'react';
-import { Conversation } from '@elevenlabs/react';
+import { useConversation } from '@11labs/react';
 
 // Complete VASA interface with real ElevenLabs voice chat
 const VASACompleteInterface = () => {
@@ -14,6 +14,26 @@ const VASACompleteInterface = () => {
     uid: 'AVs5XlU6qQezh8GiNlRwN6UEfjM2',
     email: 'mquaschnick@icloud.com'
   };
+
+  // ElevenLabs Conversation Hook
+  const conversation = useConversation({
+    onConnect: () => {
+      console.log('🎤 ElevenLabs voice chat connected!');
+      setConversationActive(true);
+    },
+    onDisconnect: () => {
+      console.log('🛑 ElevenLabs voice chat disconnected');
+      endConversation();
+    },
+    onMessage: (message) => {
+      console.log('💬 Voice message:', message);
+    },
+    onError: (error) => {
+      console.error('❌ ElevenLabs error:', error);
+      alert('Voice chat error: ' + error.message);
+      setConversationActive(false);
+    }
+  });
 
   // Load memory context and force refresh
   React.useEffect(() => {
@@ -83,8 +103,16 @@ const VASACompleteInterface = () => {
       console.log('🔗 Webhook registration:', webhookResult);
 
       if (webhookResult.success) {
+        console.log('✅ Conversation registered, starting ElevenLabs voice chat...');
+        
+        // Start ElevenLabs conversation
+        const sessionId = await conversation.startSession({
+          agentId: 'nJeN1YQZyK0aTu2SoJnM'
+        });
+        
+        console.log('🎤 ElevenLabs session started:', sessionId);
         setConversationActive(true);
-        console.log('✅ Conversation registered, memory context loaded. Starting ElevenLabs voice chat...');
+        
       } else {
         console.error('❌ Webhook registration failed:', webhookResult);
         alert('Failed to register conversation with memory system');
@@ -95,15 +123,22 @@ const VASACompleteInterface = () => {
     }
   };
 
-  const endConversation = () => {
-    console.log('🛑 Ending conversation...');
-    setConversationActive(false);
-    setConversationId(null);
-    
-    // Reload memory context to get any new memories
-    setTimeout(() => {
-      loadUserMemoryContext();
-    }, 2000);
+  const endConversation = async () => {
+    try {
+      console.log('🛑 Ending conversation...');
+      await conversation.endSession();
+      setConversationActive(false);
+      setConversationId(null);
+      
+      // Reload memory context to get any new memories
+      setTimeout(() => {
+        loadUserMemoryContext();
+      }, 2000);
+    } catch (error) {
+      console.error('❌ Error ending conversation:', error);
+      setConversationActive(false);
+      setConversationId(null);
+    }
   };
 
   const getStatusColor = () => {
@@ -268,37 +303,87 @@ const VASACompleteInterface = () => {
             </div>
           ) : (
             <div style={{ marginBottom: '2rem' }}>
-              {/* ElevenLabs Conversation Component */}
+              {/* Real ElevenLabs Voice Chat Interface */}
               <div style={{
                 background: 'rgba(255, 255, 255, 0.1)',
                 backdropFilter: 'blur(10px)',
                 borderRadius: '1rem',
                 padding: '2rem',
                 border: '1px solid rgba(255, 255, 255, 0.2)',
-                marginBottom: '1rem'
+                marginBottom: '1rem',
+                textAlign: 'center',
+                minHeight: '300px',
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'center',
+                alignItems: 'center'
               }}>
-                <Conversation
-                  agentId="nJeN1YQZyK0aTu2SoJnM"
-                  onConnect={() => {
-                    console.log('🎤 ElevenLabs voice chat connected!');
-                  }}
-                  onDisconnect={() => {
-                    console.log('🛑 ElevenLabs voice chat disconnected');
-                    endConversation();
-                  }}
-                  onError={(error) => {
-                    console.error('❌ ElevenLabs error:', error);
-                    alert('Voice chat error: ' + error.message);
-                  }}
-                  onMessage={(message) => {
-                    console.log('💬 Voice message:', message);
-                  }}
+                <div style={{
+                  width: '120px',
+                  height: '120px',
+                  borderRadius: '50%',
+                  background: conversation.isSpeaking 
+                    ? 'linear-gradient(45deg, #ff6b6b, #ffd93d)' 
+                    : 'linear-gradient(45deg, #ff4757, #ff6b6b)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: '3rem',
+                  marginBottom: '1rem',
+                  animation: conversation.isSpeaking ? 'pulse 1s infinite' : 'pulse 2s infinite',
+                  boxShadow: '0 8px 32px rgba(255, 71, 87, 0.4)'
+                }}>
+                  {conversation.isSpeaking ? '🗣️' : '🔴'}
+                </div>
+                
+                <h3 style={{ margin: '0 0 1rem 0', fontSize: '1.5rem' }}>
+                  {conversation.isSpeaking ? '🗣️ VASA Speaking' : '🎤 Listening'}
+                </h3>
+                
+                <p style={{ 
+                  color: '#c4b5fd', 
+                  fontSize: '1rem', 
+                  margin: '0 0 1rem 0',
+                  maxWidth: '400px'
+                }}>
+                  {conversation.isSpeaking 
+                    ? 'VASA is responding with your conversation context...'
+                    : 'Speak naturally - VASA remembers your previous conversations'
+                  }
+                </p>
+                
+                <div style={{
+                  background: 'rgba(255, 255, 255, 0.1)',
+                  padding: '1rem',
+                  borderRadius: '0.5rem',
+                  fontSize: '0.875rem',
+                  color: '#c4b5fd',
+                  marginBottom: '1rem'
+                }}>
+                  <p style={{ margin: '0 0 0.5rem 0' }}>✅ Memory Context: Active</p>
+                  <p style={{ margin: '0 0 0.5rem 0' }}>✅ ElevenLabs: Connected</p>
+                  <p style={{ margin: '0 0 0.5rem 0' }}>✅ Agent ID: nJeN1YQZyK0aTu2SoJnM</p>
+                  <p style={{ margin: '0 0 0.5rem 0' }}>✅ Status: {conversation.status}</p>
+                  <p style={{ margin: 0 }}>🎧 Audio: {conversation.isSpeaking ? 'VASA Speaking' : 'Listening'}</p>
+                </div>
+                
+                <button
+                  onClick={endConversation}
                   style={{
-                    width: '100%',
-                    minHeight: '300px',
-                    borderRadius: '0.5rem'
+                    padding: '0.75rem 2rem',
+                    background: 'rgba(255, 255, 255, 0.2)',
+                    border: '1px solid rgba(255, 255, 255, 0.3)',
+                    borderRadius: '2rem',
+                    color: 'white',
+                    fontSize: '1rem',
+                    cursor: 'pointer',
+                    transition: 'all 0.3s'
                   }}
-                />
+                  onMouseOver={(e) => e.target.style.background = 'rgba(255, 255, 255, 0.3)'}
+                  onMouseOut={(e) => e.target.style.background = 'rgba(255, 255, 255, 0.2)'}
+                >
+                  End Conversation
+                </button>
               </div>
               
               <button
@@ -329,7 +414,7 @@ const VASACompleteInterface = () => {
             <p style={{ fontSize: '1rem', color: '#c4b5fd', margin: 0 }}>
               {!conversationActive 
                 ? `Click the microphone to start voice conversation with memory-enhanced VASA (${getStatusText()})`
-                : 'Memory system active - VASA has access to your conversation history'
+                : 'Live voice chat active - VASA has access to your conversation history and will remember this conversation'
               }
             </p>
           </div>
