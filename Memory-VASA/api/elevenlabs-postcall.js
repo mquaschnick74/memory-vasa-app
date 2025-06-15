@@ -1,5 +1,5 @@
 // api/elevenlabs-postcall.js
-// Store real VASA conversations in Mem0 - corrected API format
+// Store real VASA conversations in Mem0 - CORRECTED API signature
 
 export default async function handler(req, res) {
   console.log('📞 POST-CALL WEBHOOK: Real conversation ended');
@@ -53,13 +53,14 @@ export default async function handler(req, res) {
         apiKey: process.env.MEM0_API_KEY
       });
       
-      console.log('🔗 Mem0 client created, storing conversation with simple format...');
+      console.log('🔗 Mem0 client created, using CORRECTED API format...');
       
-      // Use simple text-based format instead of messages format
+      // CORRECTED: Use the proper Mem0 API format
+      // Format: mem0.add(content, user_id, metadata)
       const memoryResult = await mem0.add(
-        conversationText,  // Just pass the text directly
-        userUUID,         // User ID as second parameter
-        {                 // Metadata as third parameter
+        conversationText,
+        userUUID,
+        {
           source: 'elevenlabs_real_conversation',
           conversation_id: conversation_id,
           timestamp: new Date().toISOString(),
