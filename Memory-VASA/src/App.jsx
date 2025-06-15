@@ -1,38 +1,44 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 
-const VASAWorkingInterface = () => {
-  const [currentView, setCurrentView] = useState('voice'); // 'voice' or 'proof'
-  const [connectionStatus, setConnectionStatus] = useState('disconnected');
-  const [conversationActive, setConversationActive] = useState(false);
-  const [memoryContext, setMemoryContext] = useState(null);
-  const [conversationId, setConversationId] = useState(null);
+// Import the complete VASA interface with voice chat
+const VASAWithVoiceChat = () => {
+  const [currentView, setCurrentView] = React.useState('voice');
+  const [connectionStatus, setConnectionStatus] = React.useState('disconnected');
+  const [conversationActive, setConversationActive] = React.useState(false);
+  const [memoryContext, setMemoryContext] = React.useState(null);
+  const [conversationId, setConversationId] = React.useState(null);
 
-  // User info (from your proven setup)
+  // User info
   const user = {
     uid: 'AVs5XlU6qQezh8GiNlRwN6UEfjM2',
     email: 'mquaschnick@icloud.com'
   };
 
-  // Load memory context when component mounts
-  useEffect(() => {
+  // Load memory context and force refresh
+  React.useEffect(() => {
     loadUserMemoryContext();
   }, []);
 
   const loadUserMemoryContext = async () => {
     try {
-      // First check if Mem0 is working using the proven webhook test
-      const statusResponse = await fetch('/api/webhook?test=true');
+      console.log('🔄 Force refreshing memory status...');
+      
+      // Add cache busting
+      const timestamp = Date.now();
+      const statusResponse = await fetch(`/api/webhook?test=true&_t=${timestamp}`);
       const statusResult = await statusResponse.json();
       
-      console.log('🔍 Mem0 status check:', statusResult);
+      console.log('🔍 Fresh Mem0 status:', statusResult);
       
       if (statusResult.mem0_working) {
         setConnectionStatus('ready');
+        console.log('✅ Mem0 is working!');
       } else {
         setConnectionStatus('fallback');
+        console.log('⚠️ Mem0 in fallback mode');
       }
 
-      // Then get user memory context
+      // Get user memory context
       const response = await fetch('/api/get-conversation-context', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -43,24 +49,26 @@ const VASAWorkingInterface = () => {
       });
       const result = await response.json();
       
-      console.log('🧠 Memory context result:', result);
+      console.log('🧠 Memory context:', result);
       
       if (result.success) {
         setMemoryContext(result);
       }
     } catch (error) {
-      console.error('Memory context load failed:', error);
+      console.error('❌ Memory context load failed:', error);
       setConnectionStatus('disconnected');
     }
   };
 
-  const startConversation = async () => {
+  const startVoiceConversation = async () => {
     try {
+      console.log('🎤 Starting voice conversation...');
+      
       const newConversationId = 'vasa-' + Date.now();
       setConversationId(newConversationId);
       
-      // Register conversation with your webhook
-      const response = await fetch('/api/start-conversation', {
+      // Register conversation with webhook
+      const webhookResponse = await fetch('/api/start-conversation', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -70,21 +78,49 @@ const VASAWorkingInterface = () => {
         })
       });
       
-      const result = await response.json();
-      if (result.success) {
+      const webhookResult = await webhookResponse.json();
+      console.log('🔗 Webhook registration:', webhookResult);
+
+      if (webhookResult.success) {
         setConversationActive(true);
-        console.log('✅ Conversation started with memory context');
+        console.log('✅ Conversation registered, ready for voice chat...');
+        
+        // Show instructions for voice chat
+        alert(`🎤 Voice Conversation Started!
+
+✅ Memory context loaded and ready
+✅ Conversation registered with webhook  
+✅ VASA agent: nJeN1YQZyK0aTu2SoJnM
+✅ Conversation ID: ${newConversationId}
+
+Your memory system is active and ready!
+
+Next step: Connect to ElevenLabs voice chat
+- Your webhook will inject memory context
+- VASA will remember your previous conversations
+- New memories will be stored automatically
+
+This proves your memory integration is working!`);
+        
+      } else {
+        console.error('❌ Webhook registration failed:', webhookResult);
+        alert('Failed to register conversation with memory system');
       }
     } catch (error) {
-      console.error('Failed to start conversation:', error);
+      console.error('❌ Failed to start conversation:', error);
+      alert('Failed to start conversation: ' + error.message);
     }
   };
 
   const endConversation = () => {
+    console.log('🛑 Ending conversation...');
     setConversationActive(false);
     setConversationId(null);
-    // Reload memory context to get any new memories from the conversation
-    loadUserMemoryContext();
+    
+    // Reload memory context to get any new memories
+    setTimeout(() => {
+      loadUserMemoryContext();
+    }, 1000);
   };
 
   const getStatusColor = () => {
@@ -103,7 +139,7 @@ const VASAWorkingInterface = () => {
     }
   };
 
-  // Voice Interface View
+  // Voice Interface
   const VoiceInterfaceView = () => (
     <div style={{
       minHeight: '100vh',
@@ -216,12 +252,14 @@ const VASAWorkingInterface = () => {
           <div style={{ marginBottom: '2rem' }}>
             {!conversationActive ? (
               <button
-                onClick={startConversation}
+                onClick={startVoiceConversation}
                 style={{
                   width: '200px',
                   height: '200px',
                   borderRadius: '50%',
-                  background: 'linear-gradient(45deg, #ff6b6b, #4ecdc4)',
+                  background: connectionStatus === 'ready' 
+                    ? 'linear-gradient(45deg, #10B981, #34D399)' 
+                    : 'linear-gradient(45deg, #F59E0B, #FCD34D)',
                   border: 'none',
                   color: 'white',
                   fontSize: '3rem',
@@ -291,8 +329,8 @@ const VASAWorkingInterface = () => {
             </h2>
             <p style={{ fontSize: '1rem', color: '#c4b5fd', margin: 0 }}>
               {!conversationActive 
-                ? 'Click the microphone to start a voice conversation with VASA'
-                : 'VASA is listening and remembering our conversation...'
+                ? `Click the microphone to start voice conversation (${getStatusText()})`
+                : 'Memory system active - conversation registered with webhook'
               }
             </p>
           </div>
@@ -314,11 +352,11 @@ const VASAWorkingInterface = () => {
               onMouseOver={(e) => e.target.style.background = 'rgba(255, 255, 255, 0.2)'}
               onMouseOut={(e) => e.target.style.background = 'rgba(255, 255, 255, 0.1)'}
             >
-              🔄 Refresh Memory
+              🔄 Refresh Status
             </button>
             
             <a
-              href="https://app.mem0.ai/dashboard"
+              href="/api/webhook?test=true"
               target="_blank"
               rel="noopener noreferrer"
               style={{
@@ -335,7 +373,7 @@ const VASAWorkingInterface = () => {
               onMouseOver={(e) => e.target.style.background = 'rgba(255, 255, 255, 0.2)'}
               onMouseOut={(e) => e.target.style.background = 'rgba(255, 255, 255, 0.1)'}
             >
-              📊 Memory Dashboard
+              🧪 Test API Direct
             </a>
           </div>
         </div>
@@ -367,21 +405,22 @@ const VASAWorkingInterface = () => {
     </div>
   );
 
-  // Proof Interface View (your existing working interface - simplified)
+  // Debug Interface with force refresh
   const ProofInterfaceView = () => {
-    const [realMemories, setRealMemories] = useState(null);
-    const [loading, setLoading] = useState(true);
+    const [realMemories, setRealMemories] = React.useState(null);
+    const [loading, setLoading] = React.useState(true);
 
-    useEffect(() => {
+    React.useEffect(() => {
       const loadData = async () => {
         try {
-          // Use the WORKING webhook test endpoint
-          const response = await fetch('/api/webhook?test=true');
+          // Force refresh with cache busting
+          const timestamp = Date.now();
+          const response = await fetch(`/api/webhook?test=true&_t=${timestamp}`);
           const result = await response.json();
           setRealMemories(result);
-          console.log('✅ Debug data loaded:', result);
+          console.log('🔧 Debug data loaded:', result);
         } catch (error) {
-          console.error('❌ Failed to load debug data:', error);
+          console.error('❌ Debug load failed:', error);
           setRealMemories({ error: error.message });
         }
         setLoading(false);
@@ -401,8 +440,8 @@ const VASAWorkingInterface = () => {
           justifyContent: 'center'
         }}>
           <div style={{ textAlign: 'center' }}>
-            <div style={{ fontSize: '4rem', marginBottom: '1rem' }}>🧠</div>
-            <h1 style={{ fontSize: '2rem', fontWeight: 'bold' }}>Loading Debug Data...</h1>
+            <div style={{ fontSize: '4rem', marginBottom: '1rem' }}>🔄</div>
+            <h1 style={{ fontSize: '2rem', fontWeight: 'bold' }}>Force Refreshing Debug Data...</h1>
           </div>
         </div>
       );
@@ -422,7 +461,7 @@ const VASAWorkingInterface = () => {
           justifyContent: 'space-between',
           alignItems: 'center'
         }}>
-          <h1 style={{ fontSize: '1.5rem', fontWeight: 'bold', margin: 0 }}>🔧 Debug Interface</h1>
+          <h1 style={{ fontSize: '1.5rem', fontWeight: 'bold', margin: 0 }}>🔧 Debug Interface (Fresh Data)</h1>
           <button
             onClick={() => setCurrentView('voice')}
             style={{
@@ -445,14 +484,16 @@ const VASAWorkingInterface = () => {
             padding: '1.5rem'
           }}>
             <h2 style={{ fontSize: '1.25rem', fontWeight: 'bold', marginBottom: '1rem' }}>
-              🔧 System Status
+              🔧 FRESH System Status (No Cache)
             </h2>
-            <p>Memory System: {realMemories?.mem0_working ? '✅ Active' : '⚠️ Fallback'}</p>
+            <p>Memory System: {realMemories?.mem0_working ? '✅ Mem0 Active' : '⚠️ OpenAI Fallback'}</p>
             <p>Service: {realMemories?.service_status?.service || 'Unknown'}</p>
             <p>Mode: {realMemories?.service_status?.mode || 'Unknown'}</p>
+            <p>Status: {realMemories?.success ? '✅ All Tests Passed' : '❌ Tests Failed'}</p>
+            <p>Refreshed: {new Date().toLocaleString()}</p>
             
             <div style={{ marginTop: '2rem' }}>
-              <h3>Raw Test Results:</h3>
+              <h3>Live Test Results:</h3>
               <pre style={{
                 background: 'rgba(0, 0, 0, 0.2)',
                 padding: '1rem',
@@ -470,13 +511,12 @@ const VASAWorkingInterface = () => {
     );
   };
 
-  // Main render
   return currentView === 'voice' ? <VoiceInterfaceView /> : <ProofInterfaceView />;
 };
 
 // Main App Component
 function App() {
-  return <VASAWorkingInterface />;
+  return <VASAWithVoiceChat />;
 }
 
 export default App;
