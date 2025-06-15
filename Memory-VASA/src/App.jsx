@@ -1,7 +1,8 @@
 import React from 'react';
+import { Conversation } from '@elevenlabs/react';
 
-// Import the complete VASA interface with voice chat
-const VASAWithVoiceChat = () => {
+// Complete VASA interface with real ElevenLabs voice chat
+const VASACompleteInterface = () => {
   const [currentView, setCurrentView] = React.useState('voice');
   const [connectionStatus, setConnectionStatus] = React.useState('disconnected');
   const [conversationActive, setConversationActive] = React.useState(false);
@@ -83,25 +84,7 @@ const VASAWithVoiceChat = () => {
 
       if (webhookResult.success) {
         setConversationActive(true);
-        console.log('✅ Conversation registered, ready for voice chat...');
-        
-        // Show instructions for voice chat
-        alert(`🎤 Voice Conversation Started!
-
-✅ Memory context loaded and ready
-✅ Conversation registered with webhook  
-✅ VASA agent: nJeN1YQZyK0aTu2SoJnM
-✅ Conversation ID: ${newConversationId}
-
-Your memory system is active and ready!
-
-Next step: Connect to ElevenLabs voice chat
-- Your webhook will inject memory context
-- VASA will remember your previous conversations
-- New memories will be stored automatically
-
-This proves your memory integration is working!`);
-        
+        console.log('✅ Conversation registered, memory context loaded. Starting ElevenLabs voice chat...');
       } else {
         console.error('❌ Webhook registration failed:', webhookResult);
         alert('Failed to register conversation with memory system');
@@ -120,7 +103,7 @@ This proves your memory integration is working!`);
     // Reload memory context to get any new memories
     setTimeout(() => {
       loadUserMemoryContext();
-    }, 1000);
+    }, 2000);
   };
 
   const getStatusColor = () => {
@@ -139,7 +122,7 @@ This proves your memory integration is working!`);
     }
   };
 
-  // Voice Interface
+  // Voice Interface with ElevenLabs Integration
   const VoiceInterfaceView = () => (
     <div style={{
       minHeight: '100vh',
@@ -248,9 +231,9 @@ This proves your memory integration is working!`);
             </div>
           )}
 
-          {/* Voice Interface Controls */}
-          <div style={{ marginBottom: '2rem' }}>
-            {!conversationActive ? (
+          {/* ElevenLabs Voice Interface */}
+          {!conversationActive ? (
+            <div style={{ marginBottom: '2rem' }}>
               <button
                 onClick={startVoiceConversation}
                 style={{
@@ -282,55 +265,71 @@ This proves your memory integration is working!`);
               >
                 🎤
               </button>
-            ) : (
-              <div style={{ textAlign: 'center' }}>
-                <div style={{
-                  width: '200px',
-                  height: '200px',
-                  borderRadius: '50%',
-                  background: 'linear-gradient(45deg, #ff4757, #ff6b6b)',
-                  border: 'none',
-                  color: 'white',
-                  fontSize: '3rem',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  margin: '0 auto 1rem',
-                  animation: 'pulse 2s infinite',
-                  boxShadow: '0 8px 32px rgba(255, 71, 87, 0.4)'
-                }}>
-                  🔴
-                </div>
-                <button
-                  onClick={endConversation}
-                  style={{
-                    padding: '0.75rem 2rem',
-                    background: 'rgba(255, 255, 255, 0.2)',
-                    border: '1px solid rgba(255, 255, 255, 0.3)',
-                    borderRadius: '2rem',
-                    color: 'white',
-                    fontSize: '1rem',
-                    cursor: 'pointer',
-                    transition: 'all 0.3s'
+            </div>
+          ) : (
+            <div style={{ marginBottom: '2rem' }}>
+              {/* ElevenLabs Conversation Component */}
+              <div style={{
+                background: 'rgba(255, 255, 255, 0.1)',
+                backdropFilter: 'blur(10px)',
+                borderRadius: '1rem',
+                padding: '2rem',
+                border: '1px solid rgba(255, 255, 255, 0.2)',
+                marginBottom: '1rem'
+              }}>
+                <Conversation
+                  agentId="nJeN1YQZyK0aTu2SoJnM"
+                  onConnect={() => {
+                    console.log('🎤 ElevenLabs voice chat connected!');
                   }}
-                  onMouseOver={(e) => e.target.style.background = 'rgba(255, 255, 255, 0.3)'}
-                  onMouseOut={(e) => e.target.style.background = 'rgba(255, 255, 255, 0.2)'}
-                >
-                  End Conversation
-                </button>
+                  onDisconnect={() => {
+                    console.log('🛑 ElevenLabs voice chat disconnected');
+                    endConversation();
+                  }}
+                  onError={(error) => {
+                    console.error('❌ ElevenLabs error:', error);
+                    alert('Voice chat error: ' + error.message);
+                  }}
+                  onMessage={(message) => {
+                    console.log('💬 Voice message:', message);
+                  }}
+                  style={{
+                    width: '100%',
+                    minHeight: '300px',
+                    borderRadius: '0.5rem'
+                  }}
+                />
               </div>
-            )}
-          </div>
+              
+              <button
+                onClick={endConversation}
+                style={{
+                  padding: '0.75rem 2rem',
+                  background: 'rgba(255, 255, 255, 0.2)',
+                  border: '1px solid rgba(255, 255, 255, 0.3)',
+                  borderRadius: '2rem',
+                  color: 'white',
+                  fontSize: '1rem',
+                  cursor: 'pointer',
+                  transition: 'all 0.3s'
+                }}
+                onMouseOver={(e) => e.target.style.background = 'rgba(255, 255, 255, 0.3)'}
+                onMouseOut={(e) => e.target.style.background = 'rgba(255, 255, 255, 0.2)'}
+              >
+                End Conversation
+              </button>
+            </div>
+          )}
 
           {/* Status Text */}
           <div style={{ marginBottom: '2rem' }}>
             <h2 style={{ fontSize: '1.5rem', fontWeight: 'bold', margin: '0 0 0.5rem 0' }}>
-              {!conversationActive ? 'Ready to Talk' : 'Conversation Active'}
+              {!conversationActive ? 'Ready to Talk with VASA' : 'Live Voice Conversation'}
             </h2>
             <p style={{ fontSize: '1rem', color: '#c4b5fd', margin: 0 }}>
               {!conversationActive 
-                ? `Click the microphone to start voice conversation (${getStatusText()})`
-                : 'Memory system active - conversation registered with webhook'
+                ? `Click the microphone to start voice conversation with memory-enhanced VASA (${getStatusText()})`
+                : 'Memory system active - VASA has access to your conversation history'
               }
             </p>
           </div>
@@ -352,11 +351,11 @@ This proves your memory integration is working!`);
               onMouseOver={(e) => e.target.style.background = 'rgba(255, 255, 255, 0.2)'}
               onMouseOut={(e) => e.target.style.background = 'rgba(255, 255, 255, 0.1)'}
             >
-              🔄 Refresh Status
+              🔄 Refresh Memory
             </button>
             
             <a
-              href="/api/webhook?test=true"
+              href="https://app.mem0.ai/dashboard"
               target="_blank"
               rel="noopener noreferrer"
               style={{
@@ -373,7 +372,7 @@ This proves your memory integration is working!`);
               onMouseOver={(e) => e.target.style.background = 'rgba(255, 255, 255, 0.2)'}
               onMouseOut={(e) => e.target.style.background = 'rgba(255, 255, 255, 0.1)'}
             >
-              🧪 Test API Direct
+              🧠 Mem0 Dashboard
             </a>
           </div>
         </div>
@@ -395,17 +394,10 @@ This proves your memory integration is working!`);
           <span>Lonely</span>
         </div>
       </div>
-
-      <style dangerouslySetInnerHTML={{__html: `
-        @keyframes pulse {
-          0%, 100% { transform: scale(1); }
-          50% { transform: scale(1.05); }
-        }
-      `}} />
     </div>
   );
 
-  // Debug Interface with force refresh
+  // Debug Interface (same as before with force refresh)
   const ProofInterfaceView = () => {
     const [realMemories, setRealMemories] = React.useState(null);
     const [loading, setLoading] = React.useState(true);
@@ -413,7 +405,6 @@ This proves your memory integration is working!`);
     React.useEffect(() => {
       const loadData = async () => {
         try {
-          // Force refresh with cache busting
           const timestamp = Date.now();
           const response = await fetch(`/api/webhook?test=true&_t=${timestamp}`);
           const result = await response.json();
@@ -441,7 +432,7 @@ This proves your memory integration is working!`);
         }}>
           <div style={{ textAlign: 'center' }}>
             <div style={{ fontSize: '4rem', marginBottom: '1rem' }}>🔄</div>
-            <h1 style={{ fontSize: '2rem', fontWeight: 'bold' }}>Force Refreshing Debug Data...</h1>
+            <h1 style={{ fontSize: '2rem', fontWeight: 'bold' }}>Loading Debug Data...</h1>
           </div>
         </div>
       );
@@ -461,7 +452,7 @@ This proves your memory integration is working!`);
           justifyContent: 'space-between',
           alignItems: 'center'
         }}>
-          <h1 style={{ fontSize: '1.5rem', fontWeight: 'bold', margin: 0 }}>🔧 Debug Interface (Fresh Data)</h1>
+          <h1 style={{ fontSize: '1.5rem', fontWeight: 'bold', margin: 0 }}>🔧 Debug Interface</h1>
           <button
             onClick={() => setCurrentView('voice')}
             style={{
@@ -484,16 +475,16 @@ This proves your memory integration is working!`);
             padding: '1.5rem'
           }}>
             <h2 style={{ fontSize: '1.25rem', fontWeight: 'bold', marginBottom: '1rem' }}>
-              🔧 FRESH System Status (No Cache)
+              🔧 System Status
             </h2>
             <p>Memory System: {realMemories?.mem0_working ? '✅ Mem0 Active' : '⚠️ OpenAI Fallback'}</p>
             <p>Service: {realMemories?.service_status?.service || 'Unknown'}</p>
             <p>Mode: {realMemories?.service_status?.mode || 'Unknown'}</p>
             <p>Status: {realMemories?.success ? '✅ All Tests Passed' : '❌ Tests Failed'}</p>
-            <p>Refreshed: {new Date().toLocaleString()}</p>
+            <p>Last Checked: {new Date().toLocaleString()}</p>
             
             <div style={{ marginTop: '2rem' }}>
-              <h3>Live Test Results:</h3>
+              <h3>Raw Test Results:</h3>
               <pre style={{
                 background: 'rgba(0, 0, 0, 0.2)',
                 padding: '1rem',
@@ -516,7 +507,7 @@ This proves your memory integration is working!`);
 
 // Main App Component
 function App() {
-  return <VASAWithVoiceChat />;
+  return <VASACompleteInterface />;
 }
 
 export default App;
